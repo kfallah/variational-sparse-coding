@@ -1,0 +1,4 @@
+results
+*.ipynb
+.txt
+*__pycache__*
