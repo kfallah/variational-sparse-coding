@@ -19,12 +19,12 @@ import torch.nn.functional as F
 
 from utils.dict_plotting import show_dict
 from utils.solvers import FISTA, ADMM
-from model.encoder import MLPEncoderLISTA, sample_laplacian, sample_gaussian
+from model.encoder import MLPEncoderLISTA, MLPEncoder, sample_laplacian, sample_gaussian
 from model.scheduler import CycleScheduler
 
 # PARSE COMMAND LINE ARGUMENTS #
 parser = argparse.ArgumentParser(description='Run sparse dictionary learning with compressed images.')
-parser.add_argument('-S', '--solver', default='FISTA', choices=['VI', 'FISTA', 'ADMM'],
+parser.add_argument('-S', '--solver', default='FISTA', choices=['VI', 'VILISTA', 'FISTA', 'ADMM'],
                     help="Solver used to find sparse coefficients")
 parser.add_argument('-b', '--batch_size', default=100, type=int, help="Batch size")
 parser.add_argument('-N', '--dict_count', default=256, type=int, help="Dictionary count")
@@ -98,12 +98,14 @@ if __name__ == "__main__":
     step_size = learning_rate
 
     if solver == "VI":
-        encoder = MLPEncoderLISTA(patch_size, num_dictionaries, tau).to('cuda')
-        vi_opt = torch.optim.SGD(encoder.parameters(), lr=1e-3, weight_decay=1e-4,
-                                 momentum=0.9, nesterov=True)
-        vi_scheudler = CycleScheduler(vi_opt, 1e-3, 
-                                      n_iter=(num_epochs * train_patches.shape[0]) // batch_size,
-                                      momentum=None, warmup_proportion=0.05)
+        encoder = MLPEncoder(patch_size, num_dictionaries, prior).to('cuda')
+    elif solver == "VILISTA":
+        encoder = MLPEncoderLISTA(patch_size, num_dictionaries, tau, prior).to('cuda')
+    vi_opt = torch.optim.SGD(encoder.parameters(), lr=1e-3, weight_decay=1e-4,
+                                momentum=0.9, nesterov=True)
+    vi_scheudler = CycleScheduler(vi_opt, 1e-3, 
+                                    n_iter=(num_epochs * train_patches.shape[0]) // batch_size,
+                                    momentum=None, warmup_proportion=0.05)
 
     # Initialize empty arrays for tracking learning data
     dictionary_saved = np.zeros((num_epochs, *dictionary.shape))
@@ -131,17 +133,15 @@ if __name__ == "__main__":
                 b = FISTA(dictionary, patches, tau=tau)
             elif solver == "ADMM":
                 b = ADMM(dictionary, patches, tau=tau)
-            elif solver == "VI":
+            elif solver == "VI" or solver == "VILISTA":
                 var_samples = 1
                 grad_list = []
                 for i in range(var_samples):
                     patches_cu = torch.tensor(patches.T).float().to('cuda')
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
-                    b_scale, b_cu = encoder(patches_cu, dict_cu)
+                    kl_loss, b_cu = encoder(patches_cu, dict_cu)
 
                     recon_loss = F.mse_loss(patches_cu, (b_cu @ dict_cu.T), reduction='mean')
-                    kl_loss = 0.5 * (b_scale - torch.log(b_scale) - 1.0).mean()
-
                     vi_opt.zero_grad()
                     (recon_loss + kl_weight * kl_loss).backward()
                     #model_grad = [param.grad.data.reshape(-1) for param in encoder.parameters()]
@@ -174,7 +174,6 @@ if __name__ == "__main__":
         epoch_true_l1 = np.zeros(val_patches.shape[0] // batch_size)
         epoch_val_l1 = np.zeros(val_patches.shape[0] // batch_size)
         epoch_kl_loss = np.zeros(val_patches.shape[0] // batch_size)
-
         for i in range(val_patches.shape[0] // batch_size):
             # Load next batch of validation patches
             patches = val_patches[i * batch_size:(i + 1) * batch_size].reshape(batch_size, -1).T
@@ -184,11 +183,11 @@ if __name__ == "__main__":
                 b_hat = FISTA(dictionary, patches, tau=tau)
             elif solver == "ADMM":
                 b_hat = ADMM(dictionary, patches, tau=tau)
-            elif solver == "VI":
+            elif solver == "VI" or solver == "VILISTA":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to('cuda')
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
-                    b_scale, b_cu = encoder(patches_cu, dict_cu)
+                    val_kl_loss, b_cu = encoder(patches_cu, dict_cu)
                     b_hat = b_cu.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=tau)
 
@@ -197,7 +196,7 @@ if __name__ == "__main__":
             epoch_val_recon[i] = 0.5 * np.sum((patches - dictionary @ b_hat) ** 2)
             epoch_true_l1[i] = tau * np.sum(np.abs(b_true))
             epoch_val_l1[i] = tau * np.sum(np.abs(b_hat))
-            epoch_kl_loss[i] = (0.5 * (b_scale - torch.log(b_scale) - 1.0).mean()).item()
+            epoch_kl_loss[i] = val_kl_loss
 
         # Decay step-size
         step_size = step_size * decay
@@ -242,7 +241,6 @@ if __name__ == "__main__":
             print(f"Mean true coeff value: {true_coeff}")
             print("Coeff gap: {:.3E}".format(np.linalg.norm(b_hat - b_true)))
             print("Avg support diff for coeff: {:.3f}".format(supp_diff))
-            print("LISTA mean spread: {:.3E}".format(b_scale.detach().mean()))
             print(f"Est recon: {val_recon[j]:.3E}")
             print(f"True recon: {val_true_recon[j]:.3E}")
             print("Est KL loss: {:.3E}".format(val_kl_loss[j]))
