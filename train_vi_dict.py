@@ -19,14 +19,15 @@ import torch.nn.functional as F
 
 from utils.dict_plotting import show_dict
 from utils.solvers import FISTA, ADMM
-from model.encoder import MLPEncoderLISTA, MLPEncoder, sample_laplacian, sample_gaussian
+from model.encoder import VIEncoderLISTA, VIEncoder, LISTA
 from model.scheduler import CycleScheduler
 
 # PARSE COMMAND LINE ARGUMENTS #
 parser = argparse.ArgumentParser(description='Run sparse dictionary learning with compressed images.')
-parser.add_argument('-S', '--solver', default='FISTA', choices=['VI', 'VILISTA', 'FISTA', 'ADMM'],
+parser.add_argument('-S', '--solver', default='FISTA', choices=['VI', 'VILISTA', 'LISTA', 'FISTA', 'ADMM'],
                     help="Solver used to find sparse coefficients")
 parser.add_argument('-b', '--batch_size', default=100, type=int, help="Batch size")
+parser.add_argument('-r', '--seed', default=0, type=int, help="Random seed")
 parser.add_argument('-N', '--dict_count', default=256, type=int, help="Dictionary count")
 parser.add_argument('-P', '--patch_size', default=16, type=int, help="Patch size")
 parser.add_argument('-R', '--l1_penalty', default=1e-1, type=float, help="L1 regularizer constant")
@@ -63,6 +64,9 @@ if not os.path.exists(save_dir):
     print("Created directory for figures at {}".format(save_dir))
 
 if __name__ == "__main__":
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+
     # LOAD DATA #
     data_matlab = scipy.io.loadmat('./data/whitened_images.mat')
     images = np.ascontiguousarray(data_matlab['IMAGES'])
@@ -98,12 +102,15 @@ if __name__ == "__main__":
     step_size = learning_rate
 
     if solver == "VI":
-        encoder = MLPEncoder(patch_size, num_dictionaries, prior).to('cuda')
+        encoder = VIEncoder(patch_size, num_dictionaries, prior).to('cuda')
     elif solver == "VILISTA":
-        encoder = MLPEncoderLISTA(patch_size, num_dictionaries, tau, prior).to('cuda')
+        encoder = VIEncoderLISTA(patch_size, num_dictionaries, tau, prior).to('cuda')
+    elif solver == "LISTA":
+        encoder = LISTA(patch_size, num_dictionaries, tau).to('cuda')
+
     vi_opt = torch.optim.SGD(encoder.parameters(), lr=1e-3, weight_decay=1e-4,
                                 momentum=0.9, nesterov=True)
-    vi_scheudler = CycleScheduler(vi_opt, 1e-3, 
+    vi_scheduler = CycleScheduler(vi_opt, 1e-3, 
                                     n_iter=(num_epochs * train_patches.shape[0]) // batch_size,
                                     momentum=None, warmup_proportion=0.05)
 
@@ -141,7 +148,7 @@ if __name__ == "__main__":
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
                     kl_loss, b_cu = encoder(patches_cu, dict_cu)
 
-                    recon_loss = F.mse_loss(patches_cu, (b_cu @ dict_cu.T), reduction='mean')
+                    recon_loss = F.mse_loss((b_cu @ dict_cu.T), patches_cu, reduction='mean')
                     vi_opt.zero_grad()
                     (recon_loss + kl_weight * kl_loss).backward()
                     #model_grad = [param.grad.data.reshape(-1) for param in encoder.parameters()]
@@ -153,9 +160,19 @@ if __name__ == "__main__":
                 #    print("VARIANCE:")
                 #    print(np.var(grad_list, axis=0).mean())
                 vi_opt.step()
-                vi_scheudler.step()
+                vi_scheduler.step()
                 #b = b_cu.detach().cpu().numpy().T
                 b = FISTA(dictionary, patches, tau=tau)
+            elif solver == "LISTA":
+                b = FISTA(dictionary, patches, tau=tau)
+                patches_cu = torch.tensor(patches.T).float().to('cuda')
+                kl_loss, b_cu = encoder(patches_cu)
+
+                vi_opt.zero_grad()
+                recon_loss = F.l1_loss(b_cu, torch.tensor(b, device=b_cu.device).float().T)
+                recon_loss.backward()
+                vi_opt.step()
+                vi_scheduler.step()
 
             # Take gradient step on dictionaries
             generated_patch = dictionary @ b
@@ -187,7 +204,13 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to('cuda')
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
-                    val_kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    b_hat = b_cu.detach().cpu().numpy().T
+                    b_true = FISTA(dictionary, patches, tau=tau)
+            elif solver == "LISTA":
+                with torch.no_grad():
+                    patches_cu = torch.tensor(patches.T).float().to('cuda')
+                    kl_loss, b_cu = encoder(patches_cu)
                     b_hat = b_cu.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=tau)
 
@@ -196,7 +219,7 @@ if __name__ == "__main__":
             epoch_val_recon[i] = 0.5 * np.sum((patches - dictionary @ b_hat) ** 2)
             epoch_true_l1[i] = tau * np.sum(np.abs(b_true))
             epoch_val_l1[i] = tau * np.sum(np.abs(b_hat))
-            epoch_kl_loss[i] = val_kl_loss
+            epoch_kl_loss[i] = kl_loss
 
         # Decay step-size
         step_size = step_size * decay
