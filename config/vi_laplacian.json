@@ -1,0 +1,31 @@
+{
+    "train":
+    {
+        "device": 0,
+        "seed": 0,
+        "train_samples": 50000,
+        "val_samples": 5000,
+        "batch_size": 100,
+        "dict_size": 256,
+        "patch_size": 16,
+        "epochs": 200,
+        "save_freq": 10,
+        "save_path": "results/VI_LISTA_threshold/",
+        "lr": 0.02,
+        "lr_decay": 0.98
+    },
+    "solver":
+    {
+        "solver": "VI",
+        "prior": "laplacian",
+        "feature_enc": "MLP",
+        "lambda_": 1e-1,
+        "debug": true,
+        "true_coeff": true,
+        "gradient_variance": false,
+        "iwae": true,
+        "num_samples": 10,
+        "prior_spread": 1e-1,
+        "kl_weight": 1e-2
+    }
+}
