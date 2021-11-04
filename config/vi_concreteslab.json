@@ -1,7 +1,7 @@
 {
     "train":
     {
-        "device": 1,
+        "device": 0,
         "seed": 0,
         "train_samples": 50000,
         "val_samples": 5000,
@@ -10,14 +10,14 @@
         "patch_size": 16,
         "epochs": 200,
         "save_freq": 10,
-        "save_path": "results/VI_laplacian_iwae/",
+        "save_path": "results/VI_concreteslab_iwae_temp5e-3/",
         "lr": 0.02,
         "lr_decay": 0.98
     },
     "solver":
     {
         "solver": "VI",
-        "prior": "laplacian",
+        "prior": "concreteslab",
         "feature_enc": "MLP",
         "lambda_": 1e-1,
         "debug": true,
@@ -26,6 +26,9 @@
         "iwae": true,
         "num_samples": 10,
         "prior_spread": 1e-1,
-        "kl_weight": 1e-2
+        "spike_prior": 0.1,
+        "temp_min": 5e-3,
+        "slab_kl_weight": 1e-2,
+        "spike_kl_weight": 1e0
     }
 }

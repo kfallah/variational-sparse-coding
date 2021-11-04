@@ -10,7 +10,7 @@ import argparse
 import time
 import os
 import logging
-import json
+import json, codecs
 
 import numpy as np
 import scipy.io
@@ -41,6 +41,8 @@ default_device = torch.device('cuda', train_args.device)
 if not os.path.exists(train_args.save_path):
     os.makedirs(train_args.save_path)
     print("Created directory for figures at {}".format(train_args.save_path))
+with open(train_args.save_path + '/config.json', 'wb') as f:
+    json.dump(config_data, codecs.getwriter('utf-8')(f), ensure_ascii=False, indent=2)
 logging.basicConfig(filename=os.path.join(train_args.save_path, 'training.log'), 
                     filemode='w', level=logging.DEBUG)
 
@@ -131,11 +133,11 @@ if __name__ == "__main__":
                 for s in range(var_samples):
                     patches_cu = torch.tensor(patches.T).float().to('cuda')
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
-                    kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
 
-                    recon_loss = F.mse_loss((b_cu @ dict_cu.T), patches_cu, reduction='mean')
                     vi_opt.zero_grad()
-                    (recon_loss + solver_args.kl_weight * kl_loss).backward()
+                    iwae_loss.backward()
+
                     model_grad = [param.grad.data.reshape(-1) for param in encoder.parameters()]
                     model_grad = torch.cat(model_grad)
                     grad_list.append(model_grad.detach().cpu().numpy())
@@ -192,7 +194,7 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to('cuda')
                     dict_cu = torch.tensor(dictionary, device='cuda').float()
-                    kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
                     b_hat = b_cu.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.lambda_ == "LISTA":
@@ -214,9 +216,13 @@ if __name__ == "__main__":
 
         # Ramp up sigmoid for spike-slab
         if solver_args.prior == "spikeslab":
-            encoder.c *= 1.1
-            if encoder.c >= 200:
-                encoder.c = 200
+            encoder.c *= 1.02
+            if encoder.c >= solver_args.c_max:
+                encoder.c = solver_args.c_max
+        elif solver_args.prior == "concreteslab":
+            encoder.temp *= 0.9
+            if encoder.temp <= solver_args.temp_min:
+                encoder.temp = solver_args.temp_min
 
         # Save and print data from epoch
         train_time[j] = time.time() - init_time

@@ -10,14 +10,14 @@
         "patch_size": 16,
         "epochs": 200,
         "save_freq": 10,
-        "save_path": "results/VI_laplacian_iwae/",
+        "save_path": "results/VI_gaussian_iwae/",
         "lr": 0.02,
         "lr_decay": 0.98
     },
     "solver":
     {
         "solver": "VI",
-        "prior": "laplacian",
+        "prior": "gaussian",
         "feature_enc": "MLP",
         "lambda_": 1e-1,
         "debug": true,
