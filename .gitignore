@@ -1,5 +1,5 @@
 results
-*.ipynb
 *.txt
+figures
 *__pycache__*
 data/*.np

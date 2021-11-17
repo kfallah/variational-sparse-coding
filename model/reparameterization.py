@@ -69,7 +69,9 @@ def sample_spikeslab(mu, logscale, logspike, x, A, solver_args, c=50, alpha=0.2)
 
 def sample_concreteslab(mu, logscale, logspike, x, A, solver_args, temp=0.1, alpha=0.2):
     # From first submission of (Tonolini et al 2020) without pseudo-inputs
-    # Code found https://github.com/Alfo5123/Variational-Sparse-Coding/blob/master/src/models/vsc.py
+    # The difference with the spike-slab is the use of the parameterization from the Concrete distribution paper
+    # These seem to be the exact same, but this parameterization approach lets us compare to the hyper-parameters
+    # Used in the concrete distribution
 
     # Repeat based on the number of samples
     x = x.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
