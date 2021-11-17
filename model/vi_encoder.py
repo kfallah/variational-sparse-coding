@@ -27,6 +27,9 @@ class VIEncoder(nn.Module):
         elif self.solver_args.prior == "concreteslab":
             self.spike = nn.Linear((img_size**2), dict_size)
             self.temp = 1.0
+        elif self.solver_args.prior == "vampprior":
+            pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, (img_size**2))
+            self.pseudo_inputs = nn.Parameter(pseudo_init, requires_grad=True)
 
     def forward(self, x, A):
         feat = self.enc(x)
@@ -47,6 +50,15 @@ class VIEncoder(nn.Module):
             logspike = -F.relu(-self.spike(feat))
             iwae_loss, recon_loss, kl_loss, b = sample_concreteslab(b_shift, b_logscale, logspike, x, A, 
                                                                     self.solver_args, self.temp, self.solver_args.spike_prior)       
+        elif self.solver_args.prior == "vampprior":
+            pseudo_feat = self.enc(self.pseudo_inputs)
+            pseudo_shift, pseudo_logscale = self.shift(pseudo_feat), self.scale(pseudo_feat)
+            iwae_loss, recon_loss, kl_loss, b = sample_vampprior(b_shift, b_logscale, pseudo_shift, pseudo_logscale, x, A, 
+                                                                    self.solver_args)
         else:
             raise NotImplementedError
+
+        if self.solver_args.threshold:
+            b = lista.soft_threshold(b, torch.tensor(self.solver_args.threshold_lambda, device=b.device))
+        
         return iwae_loss, recon_loss, kl_loss, b

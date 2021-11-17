@@ -11,29 +11,28 @@
         "batch_size": 100,
         "dict_size": 289,
         "patch_size": 16,
-        "epochs": 200,
+        "epochs": 300,
         "save_freq": 10,
-        "save_path": "results/VI_spikeslab_iwae/",
+        "save_path": "results/VI_gaussian-vampprior_iwae3/",
         "lr": 0.02,
         "lr_decay": 0.98
     },
     "solver":
     {
         "solver": "VI",
-        "prior": "spikeslab",
+        "prior": "vampprior",
+        "vamp_type": "gaussian",
         "feature_enc": "MLP",
+        "num_pseudo_inputs": 500,
         "lambda_": 1e-1,
         "debug": true,
         "true_coeff": true,
         "gradient_variance": false,
         "iwae": true,
-        "threshold": false,
-        "threshold_lambda": 1e-1,
+        "threshold": true,
+        "threshold_lambda": 4e-2,
         "num_samples": 10,
         "prior_spread": 1e-1,
-        "c_max": 500,
-        "spike_prior": 0.1,
-        "slab_kl_weight": 1e-2,
-        "spike_kl_weight": 1e0
+        "kl_weight": 1e-2
     }
 }

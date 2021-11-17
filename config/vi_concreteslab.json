@@ -3,6 +3,9 @@
     {
         "device": 0,
         "seed": 0,
+        "fixed_dict": true,
+        "synthetic_data": false,
+        "synthetic_support": 40,
         "train_samples": 50000,
         "val_samples": 5000,
         "batch_size": 100,
@@ -10,7 +13,7 @@
         "patch_size": 16,
         "epochs": 200,
         "save_freq": 10,
-        "save_path": "results/VI_concreteslab_iwae_temp5e-3/",
+        "save_path": "results/VI_concreteslab_iwae/",
         "lr": 0.02,
         "lr_decay": 0.98
     },
@@ -24,11 +27,13 @@
         "true_coeff": true,
         "gradient_variance": false,
         "iwae": true,
+        "threshold": false,
+        "threshold_lambda": 1e-1,
         "num_samples": 10,
         "prior_spread": 1e-1,
         "spike_prior": 0.1,
         "temp_min": 5e-3,
         "slab_kl_weight": 1e-2,
-        "spike_kl_weight": 1e0
+        "spike_kl_weight": 1e-1
     }
 }

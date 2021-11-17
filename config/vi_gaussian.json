@@ -24,6 +24,8 @@
         "true_coeff": true,
         "gradient_variance": false,
         "iwae": true,
+        "threshold": true,
+        "threshold_lambda": 1e-1,
         "num_samples": 10,
         "prior_spread": 1e-1,
         "kl_weight": 1e-2
