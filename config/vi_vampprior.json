@@ -12,7 +12,7 @@
         "dict_size": 289,
         "patch_size": 16,
         "epochs": 300,
-        "save_freq": 10,
+        "save_freq": 20,
         "save_path": "results/VI_gaussian-vampprior_iwae3/",
         "lr": 0.02,
         "lr_decay": 0.98
@@ -30,7 +30,7 @@
         "gradient_variance": false,
         "iwae": true,
         "threshold": true,
-        "threshold_lambda": 4e-2,
+        "threshold_lambda": 5e-2,
         "num_samples": 10,
         "prior_spread": 1e-1,
         "kl_weight": 1e-2
