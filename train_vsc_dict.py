@@ -121,6 +121,8 @@ if __name__ == "__main__":
                                         n_iter=(train_args.epochs * train_patches.shape[0]) // train_args.batch_size,
                                         momentum=None, warmup_proportion=0.05)
 
+        torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
+
     # Initialize empty arrays for tracking learning data
     dictionary_saved = np.zeros((train_args.epochs, *dictionary.shape))
     coeff_true = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
@@ -264,16 +266,16 @@ if __name__ == "__main__":
             logging.info("Est total loss: {:.3E}".format(val_recon[j] + solver_args.lambda_ * val_l1[j]))
             logging.info("True total loss: {:.3E}".format(val_l1[j] + solver_args.lambda_ * val_true_l1[j]))
 
-        if j % train_args.save_freq == 0 or j == train_args.epochs-1:
+        if j < 10 or (j + 1) % train_args.save_freq == 0 or (j + 1) == train_args.epochs:
             show_dict(dictionary, train_args.save_path + f"dictionary_epoch{j}.png")
-            np.savez_compressed(train_args.save_path + f"savefile_epoch{j}.npz",
+            np.savez_compressed(train_args.save_path + f"train_savefile.npz",
                     phi=dictionary_saved, time=train_time, train=train_loss, 
                     val_true_recon=val_true_recon, val_recon=val_recon, 
                     val_l1=val_l1, val_true_l1=val_true_l1,
                     val_kl_loss=val_kl_loss, coeff_est=coeff_est, coeff_true=coeff_true)
             torch.save({
                         'model_state': encoder.state_dict()
-                        }, train_args.save_path + f"encoderstate_epoch{j}.pt")
+                        }, train_args.save_path + f"encoderstate_epoch{j+1}.pt")
         logging.info("Epoch {} of {}, Avg Train Loss = {:.4f}, Avg Val Loss = {:.4f}, Time = {:.0f} secs".format(j + 1,
                                                                                                           train_args.epochs,
                                                                                                           train_loss[j],
