@@ -87,15 +87,13 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
                     kl = log_q_z - log_p_z
 
             for k in range(phi.shape[1]):
-                kl_collapse_count[k] += (kl[:, k] <= 1e-2).sum()
-                coeff_collapse_count[k] += (np.abs(code_est[:, k]) <= 1e-2).sum()
-        
-        code_list[idx, i*train_args.batch_size:(i+1)*train_args.batch_size] = code_est
-        kl_collapse_count[idx] /= train_patches.shape[0]
-        coeff_collapse_count[idx] /= train_patches.shape[0]
-        posterior_collapse[idx] = 100. * (kl_collapse_count[idx] >= 0.99).sum() / phi.shape[1]
-        coeff_collapse[idx] = 100. * (coeff_collapse_count[idx] >= 0.95).sum() / phi.shape[1]
-        multi_info[idx] = drv.information_multi(code_list.T)
+                kl_collapse_count[k] += (kl[:, k] <= 1e-2).sum() / train_patches.shape[0]
+                coeff_collapse_count[k] += (np.abs(code_est[:, k]) <= 1e-2).sum() / train_patches.shape[0]
+            code_list[idx, i*train_args.batch_size:(i+1)*train_args.batch_size] = code_est
+
+        posterior_collapse[idx] = 100. * (kl_collapse_count >= 0.99).sum() / phi.shape[1]
+        coeff_collapse[idx] = 100. * (coeff_collapse_count >= 0.95).sum() / phi.shape[1]
+        multi_info[idx] = drv.information_multi(code_list[idx].T)
         logging.info(f"Epoch {method}, multi-information: {multi_info[idx]:.3E}, % posterior collapse: {posterior_collapse[idx]:.2f}%, % coeff collapse: {coeff_collapse[idx]:.2f}%")
     np.savez_compressed(run_path + "/encoder_statistics.npz",
         code_list=code_list, posterior_collapse=posterior_collapse, 
