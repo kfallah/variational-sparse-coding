@@ -15,7 +15,9 @@
         "save_freq": 20,
         "save_path": "results/VI_laplacian_fixeddict/",
         "lr": 0.00,
-        "lr_decay": 0.98
+        "lr_decay": 0.98,
+        "compute_stats": true,
+        "stat_im_count": 40000
     },
     "solver":
     {

@@ -20,6 +20,7 @@ from sklearn.feature_extraction.image import extract_patches_2d
 import torch
 import torch.nn.functional as F
 
+from compute_vsc_statistics import compute_statistics
 from utils.dict_plotting import show_dict
 from utils.solvers import FISTA, ADMM
 from model.lista import VIEncoderLISTA, LISTA
@@ -28,7 +29,7 @@ from model.scheduler import CycleScheduler
 from utils.util import *
 
 # Load arguments for training via config file input to CLI #
-parser = argparse.ArgumentParser(description='TransOp Backbone Training')
+parser = argparse.ArgumentParser(description='Variational Sparse Coding')
 parser.add_argument('-c', '--config', type=str, required=True,
                     help='Path to config file for training.')
 args = parser.parse_args()
@@ -279,3 +280,6 @@ if __name__ == "__main__":
                                                                                                           val_recon[j] + solver_args.lambda_ * val_l1[j],
                                                                                                           epoch_time))
         logging.info("\n")
+
+    if train_args.compute_stats:
+        compute_statistics(train_args.save_path, train_args.stat_im_count, train_args, solver_args)

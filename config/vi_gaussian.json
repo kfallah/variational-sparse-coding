@@ -15,7 +15,9 @@
         "save_freq": 20,
         "save_path": "results/VI_gaussian_synthetic/",
         "lr": 0.02,
-        "lr_decay": 0.98
+        "lr_decay": 0.98,
+        "compute_stats": true,
+        "stat_im_count": 40000
     },
     "solver":
     {
@@ -28,7 +30,7 @@
         "gradient_variance": false,
         "iwae": true,
         "threshold": true,
-        "threshold_lambda": 3e-1,
+        "threshold_lambda": 5e-1,
         "num_samples": 10,
         "prior_spread": 1e-1,
         "kl_weight": 1e-3
