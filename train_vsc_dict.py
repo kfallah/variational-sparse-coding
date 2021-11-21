@@ -267,7 +267,7 @@ if __name__ == "__main__":
             logging.info("True total loss: {:.3E}".format(val_l1[j] + solver_args.lambda_ * val_true_l1[j]))
 
         if j < 10 or (j + 1) % train_args.save_freq == 0 or (j + 1) == train_args.epochs:
-            show_dict(dictionary, train_args.save_path + f"dictionary_epoch{j}.png")
+            show_dict(dictionary, train_args.save_path + f"dictionary_epoch{j+1}.png")
             np.savez_compressed(train_args.save_path + f"train_savefile.npz",
                     phi=dictionary_saved, time=train_time, train=train_loss, 
                     val_true_recon=val_true_recon, val_recon=val_recon, 

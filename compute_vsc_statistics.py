@@ -14,6 +14,7 @@ import logging
 from types import SimpleNamespace
 
 import torch
+import torch.nn.functional as F
 
 import numpy as np
 from pyitlib import discrete_random_variable as drv
@@ -73,6 +74,13 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
                     feat = encoder.enc(patches_cu)
                     logvar, mu = encoder.shift(feat), encoder.scale(feat)        
                     kl = - 0.5 * (1 + logvar - (mu ** 2) - logvar.exp())
+                elif solver_args.prior == "concreteslab":
+                    feat = encoder.enc(patches_cu)
+                    logscale, mu, logspike = encoder.shift(feat), encoder.scale(feat), -F.relu(-encoder.spike(feat))
+                    spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
+                    kl = -0.5 * (spike * (1 + logscale - mu.pow(2) - logscale.exp())) + \
+                              ((1 - spike).mul(torch.log((1 - spike) / (1 - solver_args.spike_prior))) + \
+                                                            spike.mul(torch.log(spike / solver_args.spike_prior)))
                 elif solver_args.prior == "vampprior":
                     feat = encoder.enc(patches_cu)
                     logvar, mu = encoder.shift(feat), encoder.scale(feat)
