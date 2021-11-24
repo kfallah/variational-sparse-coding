@@ -1,7 +1,7 @@
 {
     "train":
     {
-        "device": 1,
+        "device": 0,
         "seed": 0,
         "fixed_dict": true,
         "synthetic_data": false,
@@ -13,7 +13,7 @@
         "patch_size": 16,
         "epochs": 300,
         "save_freq": 20,
-        "save_path": "results/VI_laplacian_fixeddict/",
+        "save_path": "results/VI_laplacian/",
         "lr": 0.00,
         "lr_decay": 0.98,
         "compute_stats": true,
@@ -22,17 +22,19 @@
     "solver":
     {
         "solver": "VI",
-        "prior": "laplacian",
         "feature_enc": "MLP",
         "lambda_": 1e-1,
         "debug": true,
         "true_coeff": true,
         "gradient_variance": false,
         "iwae": true,
+        "num_samples": 10,
         "threshold": true,
         "threshold_lambda": 1e-1,
-        "num_samples": 10,
-        "prior_spread": 1e-1,
-        "kl_weight": 1e-3
+        "theshold_learn": false,
+        "prior_distribution": "laplacian",
+        "prior_method": "fixed",
+        "spread_prior": 1e0,
+        "kl_weight": 1e-4
     }
 }

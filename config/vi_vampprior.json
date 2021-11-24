@@ -1,7 +1,7 @@
 {
     "train":
     {
-        "device": 0,
+        "device": 1,
         "seed": 0,
         "fixed_dict": true,
         "synthetic_data": false,
@@ -13,7 +13,7 @@
         "patch_size": 16,
         "epochs": 300,
         "save_freq": 20,
-        "save_path": "results/VI_gaussian-vampprior_iwae3/",
+        "save_path": "results/VI_vampprior_learnthresh/",
         "lr": 0.02,
         "lr_decay": 0.98,
         "compute_stats": true,
@@ -22,19 +22,20 @@
     "solver":
     {
         "solver": "VI",
-        "prior": "vampprior",
-        "vamp_type": "gaussian",
         "feature_enc": "MLP",
-        "num_pseudo_inputs": 500,
         "lambda_": 1e-1,
         "debug": true,
         "true_coeff": true,
         "gradient_variance": false,
         "iwae": true,
+        "num_samples": 10,
         "threshold": true,
         "threshold_lambda": 5e-2,
-        "num_samples": 10,
-        "prior_spread": 1e-1,
+        "theshold_learn": true,
+        "prior_distribution": "gaussian",
+        "prior_method": "vamp",
+        "prior_spread": 1e0,
+        "num_pseudo_inputs": 500,
         "kl_weight": 1e-2
     }
 }

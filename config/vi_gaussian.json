@@ -1,19 +1,19 @@
 {
     "train":
     {
-        "device": 1,
+        "device": 0,
         "seed": 0,
-        "fixed_dict": true,
+        "fixed_dict": false,
         "synthetic_data": false,
         "synthetic_support": 40,
         "train_samples": 50000,
-        "val_samples": 1000,
+        "val_samples": 5000,
         "batch_size": 100,
         "dict_size": 289,
         "patch_size": 16,
         "epochs": 300,
         "save_freq": 20,
-        "save_path": "results/VI_gaussian_kl1e-5/",
+        "save_path": "results/VI_gaussian_learnthresh_coadapt/",
         "lr": 0.02,
         "lr_decay": 0.98,
         "compute_stats": true,
@@ -22,17 +22,19 @@
     "solver":
     {
         "solver": "VI",
-        "prior": "gaussian",
         "feature_enc": "MLP",
         "lambda_": 1e-1,
         "debug": true,
-        "true_coeff": true,
+        "true_coeff": false,
         "gradient_variance": false,
         "iwae": true,
+        "num_samples": 10,
         "threshold": true,
         "threshold_lambda": 1e-1,
-        "num_samples": 10,
-        "prior_spread": 1e-1,
-        "kl_weight": 1e-5
+        "theshold_learn": true,
+        "prior_distribution": "gaussian",
+        "prior_method": "fixed",
+        "spread_prior": 1e0,
+        "kl_weight": 1e-4
     }
 }

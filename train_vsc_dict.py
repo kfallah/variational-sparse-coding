@@ -132,6 +132,7 @@ if __name__ == "__main__":
     val_recon = np.zeros(train_args.epochs)
     val_true_l1 = np.zeros(train_args.epochs)
     val_l1 = np.zeros(train_args.epochs)
+    val_iwae_loss = np.zeros(train_args.epochs)
     val_kl_loss = np.zeros(train_args.epochs)
     train_time = np.zeros(train_args.epochs)
 
@@ -203,6 +204,7 @@ if __name__ == "__main__":
         epoch_val_recon = np.zeros(val_patches.shape[0] // train_args.batch_size)
         epoch_true_l1 = np.zeros(val_patches.shape[0] // train_args.batch_size)
         epoch_val_l1 = np.zeros(val_patches.shape[0] // train_args.batch_size)
+        epoch_iwae_loss = np.zeros(val_patches.shape[0] // train_args.batch_size)
         epoch_kl_loss = np.zeros(val_patches.shape[0] // train_args.batch_size)
         for i in range(val_patches.shape[0] // train_args.batch_size):
             # Load next batch of validation patches
@@ -232,17 +234,14 @@ if __name__ == "__main__":
             epoch_val_recon[i] = 0.5 * np.sum((patches - dictionary @ b_hat) ** 2)
             epoch_true_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_true))
             epoch_val_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_hat))
+            epoch_iwae_loss[i] = iwae_loss
             epoch_kl_loss[i] = kl_loss
 
         # Decay step-size
         step_size = step_size * train_args.lr_decay
 
         # Ramp up sigmoid for spike-slab
-        if solver_args.prior == "spikeslab":
-            encoder.c *= 1.02
-            if encoder.c >= solver_args.c_max:
-                encoder.c = solver_args.c_max
-        elif solver_args.prior == "concreteslab":
+        if solver_args.prior_distribution == "concreteslab":
             encoder.temp *= 0.9
             if encoder.temp <= solver_args.temp_min:
                 encoder.temp = solver_args.temp_min
@@ -255,6 +254,7 @@ if __name__ == "__main__":
         val_recon[j] = np.mean(epoch_val_recon)
         val_true_l1[j] = np.mean(epoch_true_l1)
         val_l1[j] = np.mean(epoch_val_l1)
+        val_iwae_loss[j] = np.mean(epoch_iwae_loss)
         val_kl_loss[j] = np.mean(epoch_kl_loss)
         coeff_est[j] = b_hat.T
         coeff_true[j] = b_true.T
@@ -262,6 +262,7 @@ if __name__ == "__main__":
 
         if solver_args.debug:
             print_debug(train_args, b_true.T, b_hat.T)
+            logging.info("Est IWAE loss: {:.3E}".format(val_iwae_loss[j]))
             logging.info("Est KL loss: {:.3E}".format(val_kl_loss[j]))
             logging.info("Est total loss: {:.3E}".format(val_recon[j] + solver_args.lambda_ * val_l1[j]))
             logging.info("True total loss: {:.3E}".format(val_l1[j] + solver_args.lambda_ * val_true_l1[j]))
@@ -271,7 +272,7 @@ if __name__ == "__main__":
             np.savez_compressed(train_args.save_path + f"train_savefile.npz",
                     phi=dictionary_saved, time=train_time, train=train_loss, 
                     val_true_recon=val_true_recon, val_recon=val_recon, 
-                    val_l1=val_l1, val_true_l1=val_true_l1,
+                    val_l1=val_l1, val_true_l1=val_true_l1, val_iwae_loss=val_iwae_loss,
                     val_kl_loss=val_kl_loss, coeff_est=coeff_est, coeff_true=coeff_true)
             torch.save({
                         'model_state': encoder.state_dict()

@@ -1,4 +1,5 @@
 results
+results_sweep
 *.txt
 figures
 *__pycache__*

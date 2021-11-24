@@ -65,23 +65,23 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
                 iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
                 code_est = b_cu.detach().cpu().numpy()
 
-                if solver_args.prior == "laplacian":
+                if solver_args.prior_distribution == "laplacian":
                     feat = encoder.enc(patches_cu)
                     logscale, mu = encoder.shift(feat), encoder.scale(feat)
                     scale = torch.exp(logscale)
                     kl = (-1 - logscale + mu.abs() + scale*(-mu.abs() / scale).exp())
-                elif solver_args.prior == "gaussian":
+                elif solver_args.prior_distribution == "gaussian":
                     feat = encoder.enc(patches_cu)
                     logvar, mu = encoder.shift(feat), encoder.scale(feat)        
                     kl = - 0.5 * (1 + logvar - (mu ** 2) - logvar.exp())
-                elif solver_args.prior == "concreteslab":
+                elif solver_args.prior_distribution == "concreteslab":
                     feat = encoder.enc(patches_cu)
                     logscale, mu, logspike = encoder.shift(feat), encoder.scale(feat), -F.relu(-encoder.spike(feat))
                     spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
                     kl = -0.5 * (spike * (1 + logscale - mu.pow(2) - logscale.exp())) + \
                               ((1 - spike).mul(torch.log((1 - spike) / (1 - solver_args.spike_prior))) + \
                                                             spike.mul(torch.log(spike / solver_args.spike_prior)))
-                elif solver_args.prior == "vampprior":
+                elif solver_args.prior_method == "vampprior":
                     feat = encoder.enc(patches_cu)
                     logvar, mu = encoder.shift(feat), encoder.scale(feat)
                     
