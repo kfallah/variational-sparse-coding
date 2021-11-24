@@ -49,18 +49,24 @@ def vamp_kl(solver_args, **params):
 
     if solver_args.prior_distribution == "laplacian":
         log_p_z = (-0.5 * pseudo_logscale - torch.abs(params['z'].unsqueeze(2) - pseudo_shift) / pseudo_logscale.exp()).sum(dim=-1)
-        log_p_z = torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
-        log_q_z = (-0.5 * params['logscale'] - torch.abs(params['z'] - params['shift']) / params['logscale'].exp())
+        log_p_z = solver_args.kl_weight * torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
+        log_q_z = solver_args.kl_weight * (-0.5 * params['logscale'] - torch.abs(params['z'] - params['shift']) / params['logscale'].exp())
     elif solver_args.prior_distribution == "gaussian":
         log_p_z = -0.5 * (pseudo_logscale + torch.pow(params['z'].unsqueeze(2) - pseudo_shift, 2 ) / torch.exp(pseudo_logscale))
-        log_p_z = torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
-        log_q_z = -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
+        log_p_z = solver_args.kl_weight * torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
+        log_q_z = solver_args.kl_weight * -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
     elif solver_args.prior_distribution == "concreteslab":
-        raise NotImplementedError
+        pseudo_logspike = -F.relu(-params['encoder'].spike(pseudo_feat))
+        pseudo_spike = torch.clamp(pseudo_logspike.exp(), 1e-6, 1.0 - 1e-6) 
+        log_p_z = -0.5 * (pseudo_logscale + torch.pow(params['z'].unsqueeze(2) - pseudo_shift, 2 ) / torch.exp(pseudo_logscale))
+        log_p_z = solver_args.slab_kl_weight * params['spike'] *  torch.logsumexp(log_p_z - torch.log(solver_args.num_pseudo_inputs / pseudo_spike), dim=-2)
+        log_p_z += solver_args.spike_kl_weight * (1 - params['spike']) * torch.log((1 - pseudo_spike).mean(dim=-2))
+        log_q_z = solver_args.slab_kl_weight * params['spike'] * -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
+        log_q_z += solver_args.spike_kl_weight * (1 - params['spike']) * torch.log(1 - params['spike'])
     else:
         raise NotImplementedError
 
-    return solver_args.kl_weight * (log_q_z - log_p_z)
+    return log_q_z - log_p_z
 
 def clf_kl():
     raise NotImplementedError
