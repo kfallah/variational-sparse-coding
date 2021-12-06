@@ -1,9 +1,9 @@
 {
     "train":
     {
-        "device": 0,
+        "device": 1,
         "seed": 0,
-        "fixed_dict": true,
+        "fixed_dict": false,
         "synthetic_data": false,
         "synthetic_support": 40,
         "train_samples": 50000,
@@ -11,10 +11,12 @@
         "batch_size": 100,
         "dict_size": 289,
         "patch_size": 16,
-        "epochs": 300,
+        "epochs": 200,
         "save_freq": 20,
-        "save_path": "results/VI_laplacian/",
-        "lr": 0.00,
+        "save_path": "results/concreteslab_fixed/",
+        "normalize": false,
+        "fnorm_reg": 1e-3,
+        "lr": 0.02,
         "lr_decay": 0.98,
         "compute_stats": true,
         "stat_im_count": 40000
@@ -25,16 +27,18 @@
         "feature_enc": "MLP",
         "lambda_": 1e-1,
         "debug": true,
-        "true_coeff": true,
+        "true_coeff": false,
         "gradient_variance": false,
         "iwae": true,
         "num_samples": 10,
-        "threshold": true,
-        "threshold_lambda": 1e-1,
+        "threshold": false,
+        "threshold_lambda": 1e-2,
         "theshold_learn": false,
-        "prior_distribution": "laplacian",
+        "prior_distribution": "concreteslab",
         "prior_method": "fixed",
         "spread_prior": 1e0,
+        "spike_prior": 0.2,
+        "temp_min": 5e-3,
         "kl_weight": 1e-4
     }
 }

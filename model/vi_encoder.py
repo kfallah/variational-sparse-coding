@@ -16,6 +16,11 @@ class VIEncoder(nn.Module):
         self.solver_args = solver_args
         if self.solver_args.feature_enc == "MLP":
             self.enc = MLPEncoder(img_size)
+            if self.solver_args.prior_method == "clf":
+                self.clf = nn.Sequential(
+                            MLPEncoder(img_size),
+                            nn.Linear((img_size**2), self.solver_args.num_pseudo_inputs)
+                        )
         else:
             raise NotImplementedError
         self.scale = nn.Linear((img_size**2), dict_size)
@@ -24,10 +29,11 @@ class VIEncoder(nn.Module):
         if self.solver_args.prior_distribution == "concreteslab":
             self.spike = nn.Linear((img_size**2), dict_size)
             self.temp = 1.0
-        if self.solver_args.prior_method == "vamp":
+        if self.solver_args.prior_method == "vamp" or self.solver_args.prior_method == "clf":
             pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, (img_size**2))
             self.pseudo_inputs = nn.Parameter(pseudo_init, requires_grad=True)
-
+        if self.solver_args.prior_method == "clf":
+           self.clf_temp = 1.0
         if self.solver_args.threshold:
             self.lambda_ = torch.ones(dict_size) * solver_args.threshold_lambda
             if self.solver_args.theshold_learn:

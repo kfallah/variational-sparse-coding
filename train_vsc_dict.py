@@ -125,6 +125,7 @@ if __name__ == "__main__":
 
     # Initialize empty arrays for tracking learning data
     dictionary_saved = np.zeros((train_args.epochs, *dictionary.shape))
+    lambda_list = np.zeros((train_args.epochs, train_args.dict_size))
     coeff_true = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
     coeff_est = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
     train_loss = np.zeros(train_args.epochs)
@@ -191,10 +192,12 @@ if __name__ == "__main__":
             # Take gradient step on dictionaries
             generated_patch = dictionary @ b
             residual = patches - generated_patch
-            step = residual @ b.T
+            step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary
+
             dictionary += step_size * step
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
-            dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
+            if train_args.normalize:
+                dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
 
             # Calculate loss after gradient step
             epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b) ** 2) + solver_args.lambda_ * np.sum(np.abs(b))
@@ -213,6 +216,8 @@ if __name__ == "__main__":
             # Infer coefficients
             if solver_args.solver == "FISTA":
                 b_hat = FISTA(dictionary, patches, tau=solver_args.lambda_)
+                b_true = np.array(b_hat)
+                iwae_loss, kl_loss = 0., 0.
             elif solver_args.solver == "ADMM":
                 b_hat = ADMM(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.solver == "VI" or solver_args.solver == "VILISTA":
@@ -245,6 +250,10 @@ if __name__ == "__main__":
             encoder.temp *= 0.9
             if encoder.temp <= solver_args.temp_min:
                 encoder.temp = solver_args.temp_min
+        if solver_args.prior_method == "clf":
+            encoder.clf_temp *= 0.9
+            if encoder.clf_temp <= solver_args.clf_temp_min:
+                encoder.clf_temp = solver_args.clf_temp_min
 
         # Save and print data from epoch
         train_time[j] = time.time() - init_time
@@ -258,10 +267,18 @@ if __name__ == "__main__":
         val_kl_loss[j] = np.mean(epoch_kl_loss)
         coeff_est[j] = b_hat.T
         coeff_true[j] = b_true.T
+        if solver_args.threshold and solver_args.solver == "VI":
+            lambda_list[j] = encoder.lambda_.data.cpu().numpy()
+        else:
+            lambda_list[j] = np.ones(train_args.dict_size) * -1
         dictionary_saved[j] = dictionary
 
         if solver_args.debug:
             print_debug(train_args, b_true.T, b_hat.T)
+            for d in range(train_args.dict_size):
+                logging.info(f"Dict {d}, norm: {np.sqrt(np.sum(dictionary ** 2, axis=0))[d]:.2E}")
+            logging.info("Mean lambda value: {:.3E}".format(lambda_list[j].mean()))
+            logging.info("Mean dict norm: {}".format(np.sqrt(np.sum(dictionary ** 2, axis=0)).mean()))
             logging.info("Est IWAE loss: {:.3E}".format(val_iwae_loss[j]))
             logging.info("Est KL loss: {:.3E}".format(val_kl_loss[j]))
             logging.info("Est total loss: {:.3E}".format(val_recon[j] + solver_args.lambda_ * val_l1[j]))
@@ -270,13 +287,14 @@ if __name__ == "__main__":
         if j < 10 or (j + 1) % train_args.save_freq == 0 or (j + 1) == train_args.epochs:
             show_dict(dictionary, train_args.save_path + f"dictionary_epoch{j+1}.png")
             np.savez_compressed(train_args.save_path + f"train_savefile.npz",
-                    phi=dictionary_saved, time=train_time, train=train_loss, 
-                    val_true_recon=val_true_recon, val_recon=val_recon, 
+                    phi=dictionary_saved, lambda_list=lambda_list, time=train_time,
+                    train=train_loss, val_true_recon=val_true_recon, val_recon=val_recon, 
                     val_l1=val_l1, val_true_l1=val_true_l1, val_iwae_loss=val_iwae_loss,
                     val_kl_loss=val_kl_loss, coeff_est=coeff_est, coeff_true=coeff_true)
-            torch.save({
-                        'model_state': encoder.state_dict()
-                        }, train_args.save_path + f"encoderstate_epoch{j+1}.pt")
+            if solver_args.solver == "VI":
+                torch.save({
+                            'model_state': encoder.state_dict()
+                            }, train_args.save_path + f"encoderstate_epoch{j+1}.pt")
         logging.info("Epoch {} of {}, Avg Train Loss = {:.4f}, Avg Val Loss = {:.4f}, Time = {:.0f} secs".format(j + 1,
                                                                                                           train_args.epochs,
                                                                                                           train_loss[j],

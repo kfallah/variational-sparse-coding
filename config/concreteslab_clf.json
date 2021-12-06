@@ -1,0 +1,45 @@
+{
+    "train":
+    {
+        "device": 1,
+        "seed": 0,
+        "fixed_dict": true,
+        "synthetic_data": false,
+        "synthetic_support": 40,
+        "train_samples": 50000,
+        "val_samples": 5000,
+        "batch_size": 100,
+        "dict_size": 289,
+        "patch_size": 16,
+        "epochs": 200,
+        "save_freq": 20,
+        "save_path": "results/concreteslab_clf/",
+        "normalize": false,
+        "fnorm_reg": 1e-3,
+        "lr": 0.02,
+        "lr_decay": 0.98,
+        "compute_stats": true,
+        "stat_im_count": 40000
+    },
+    "solver":
+    {
+        "solver": "VI",
+        "feature_enc": "MLP",
+        "lambda_": 1e-1,
+        "debug": true,
+        "true_coeff": true,
+        "gradient_variance": false,
+        "iwae": true,
+        "num_samples": 10,
+        "threshold": false,
+        "threshold_lambda": 1e-2,
+        "theshold_learn": false,
+        "prior_distribution": "concreteslab",
+        "prior_method": "clf",
+        "num_pseudo_inputs": 200,
+        "spread_prior": 1e0,
+        "spike_prior": 0.2,
+        "temp_min": 1e-1,
+        "kl_weight": 1e-2
+    }
+}

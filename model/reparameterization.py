@@ -27,17 +27,15 @@ def fixed_kl(solver_args, **params):
         scale = torch.exp(params['logscale'])
         kl_loss = (params['shift'].abs() / scale_prior) + logscale_prior - params['logscale'] - 1
         kl_loss += (scale / scale_prior) * (-params['shift'].abs() / scale).exp()
-        kl_loss *= solver_args.kl_weight
     elif solver_args.prior_distribution == "gaussian":
         kl_loss = -0.5 * (1 + params['logscale'] - logscale_prior)
-        kl_loss += 0.5 * ((params['shift'] ** 2) + params['logscale'].exp()) / scale_prior
-        kl_loss *= solver_args.kl_weight
+        kl_loss += 0.5 * ((params['shift'] ** 2) + (params['logscale']).exp()) / scale_prior
     elif solver_args.prior_distribution == "concreteslab":
         slab_kl = -0.5 * params['spike'] * (1 + params['logscale'] - logscale_prior)
         slab_kl += 0.5 * params['spike'] * ((params['shift'] ** 2) + params['logscale'].exp()) / scale_prior
         spike_kl = ((1 - params['spike']) * torch.log((1 - params['spike']) / (1 - params['spike_prior']))) + \
                     (params['spike'] * torch.log(params['spike'] / params['spike_prior']))
-        kl_loss = solver_args.slab_kl_weight * slab_kl + solver_args.spike_kl_weight * spike_kl
+        kl_loss = slab_kl + spike_kl
     else:
         raise NotImplementedError
 
@@ -49,27 +47,45 @@ def vamp_kl(solver_args, **params):
 
     if solver_args.prior_distribution == "laplacian":
         log_p_z = (-0.5 * pseudo_logscale - torch.abs(params['z'].unsqueeze(2) - pseudo_shift) / pseudo_logscale.exp()).sum(dim=-1)
-        log_p_z = solver_args.kl_weight * torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
-        log_q_z = solver_args.kl_weight * (-0.5 * params['logscale'] - torch.abs(params['z'] - params['shift']) / params['logscale'].exp())
+        log_p_z = torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
+        log_q_z = (-0.5 * params['logscale'] - torch.abs(params['z'] - params['shift']) / params['logscale'].exp())
     elif solver_args.prior_distribution == "gaussian":
         log_p_z = -0.5 * (pseudo_logscale + torch.pow(params['z'].unsqueeze(2) - pseudo_shift, 2 ) / torch.exp(pseudo_logscale))
-        log_p_z = solver_args.kl_weight * torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
-        log_q_z = solver_args.kl_weight * -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
+        log_p_z = torch.logsumexp(log_p_z - np.log(solver_args.num_pseudo_inputs), dim=-2)
+        log_q_z = -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
     elif solver_args.prior_distribution == "concreteslab":
         pseudo_logspike = -F.relu(-params['encoder'].spike(pseudo_feat))
         pseudo_spike = torch.clamp(pseudo_logspike.exp(), 1e-6, 1.0 - 1e-6) 
         log_p_z = -0.5 * (pseudo_logscale + torch.pow(params['z'].unsqueeze(2) - pseudo_shift, 2 ) / torch.exp(pseudo_logscale))
-        log_p_z = solver_args.slab_kl_weight * params['spike'] *  torch.logsumexp(log_p_z - torch.log(solver_args.num_pseudo_inputs / pseudo_spike), dim=-2)
-        log_p_z += solver_args.spike_kl_weight * (1 - params['spike']) * torch.log((1 - pseudo_spike).mean(dim=-2))
-        log_q_z = solver_args.slab_kl_weight * params['spike'] * -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
-        log_q_z += solver_args.spike_kl_weight * (1 - params['spike']) * torch.log(1 - params['spike'])
+        log_p_z = params['spike'] *  torch.logsumexp(log_p_z - torch.log(solver_args.num_pseudo_inputs / pseudo_spike), dim=-2)
+        log_p_z += (1 - params['spike']) * torch.log((1 - pseudo_spike).mean(dim=-2))
+        log_q_z = params['spike'] * -0.5 * (params['logscale'] + torch.pow(params['z'] - params['shift'], 2 ) / torch.exp(params['logscale']))
+        log_q_z += (1 - params['spike']) * torch.log(1 - params['spike'])
     else:
         raise NotImplementedError
 
     return log_q_z - log_p_z
 
-def clf_kl():
-    raise NotImplementedError
+def clf_kl(solver_args, **params):
+    pseudo_feat =  params['encoder'].enc(params['encoder'].pseudo_inputs)
+    pseudo_shift, pseudo_logscale =  params['encoder'].shift(pseudo_feat),  params['encoder'].scale(pseudo_feat)
+    pseudo_shift, pseudo_logscale = pseudo_shift[None, None], pseudo_logscale[None, None]
+    shift, logscale = params['shift'][:, :, None], params['logscale'][:, :, None]
+    clf_logit = params['encoder'].clf(params['x'])
+    selection = F.gumbel_softmax(clf_logit, tau=params['encoder'].clf_temp)
+
+    if solver_args.prior_distribution == "laplacian":
+        kl_loss = ((shift - pseudo_shift).abs() / pseudo_logscale.exp()) + pseudo_logscale - logscale - 1
+        kl_loss += (logscale.exp() / pseudo_logscale.exp()) * (-(shift - pseudo_shift).abs() / logscale.exp()).exp()
+        kl_loss = (selection[..., None] * kl_loss).sum(dim=-2)
+    elif solver_args.prior_distribution == "gaussian":
+        kl_loss = -0.5 * (logscale - pseudo_logscale + 1)
+        kl_loss += 0.5 * (((shift - pseudo_shift) ** 2) + logscale.exp()) / pseudo_logscale.exp()
+        kl_loss = (selection[..., None] * kl_loss).sum(dim=-2)
+    elif solver_args.prior_distribution == "concreteslab":
+        raise NotImplementedError
+
+    return kl_loss
 
 def coreset_kl():
     raise NotImplementedError
@@ -83,13 +99,18 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args):
 
     scale = torch.exp(0.5*logscale)
     eps = torch.randn_like(scale)
-    z = shift + eps*scale
-
-    kl_loss = compute_kl(solver_args, z=z, encoder=encoder, logscale=logscale, shift=shift).sum(dim=-1)
     if solver_args.threshold:
-        z = encoder.soft_threshold(z)
+        z = encoder.soft_threshold(eps*scale)
+        non_zero = torch.nonzero(z, as_tuple=True)  
+        z[non_zero] = shift[non_zero] + z[non_zero]
+    else:
+        z = shift + eps*scale
+
+    kl_loss = compute_kl(solver_args, x=x, z=z, encoder=encoder, logscale=logscale, shift=shift).sum(dim=-1)
+    #if solver_args.threshold:
+    #    z = encoder.soft_threshold(z)
     recon_loss = F.mse_loss((z @ A.T), x, reduction='none').mean(dim=-1)
-    z, iwae_loss = compute_iwae_loss(z, recon_loss, kl_loss, solver_args.iwae)
+    z, iwae_loss = compute_iwae_loss(z, recon_loss, solver_args.kl_weight * kl_loss, solver_args.iwae)
 
     return iwae_loss, recon_loss.mean(), kl_loss.mean(), z
 
@@ -103,11 +124,11 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args):
     u = torch.rand_like(logscale) - 0.5
     z = shift - scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-10))   
 
-    kl_loss = compute_kl(solver_args, z=z, encoeder=encoder, logscale=logscale, shift=shift).sum(dim=-1)
+    kl_loss = compute_kl(solver_args, x=x, z=z, encoeder=encoder, logscale=logscale, shift=shift).sum(dim=-1)
     if solver_args.threshold:
         z = encoder.soft_threshold(z)
     recon_loss = F.mse_loss((z @ A.T), x, reduction='none').mean(dim=-1)    
-    z, iwae_loss = compute_iwae_loss(z, recon_loss, kl_loss, solver_args.iwae)
+    z, iwae_loss = compute_iwae_loss(z, recon_loss, solver_args.kl_weight * kl_loss, solver_args.iwae)
 
     return iwae_loss, recon_loss.mean(), kl_loss.mean(), z
 
@@ -132,12 +153,12 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     z = selection * gaussian
 
     spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
-    kl_loss = compute_kl(solver_args, z=z, encoder=encoder, logscale=logscale, shift=shift, 
-                         spike=spike, spike_prior=spike_prior).sum(dim=-1)
+    kl_loss = compute_kl(solver_args, x=x, z=z, encoder=encoder, logscale=logscale,
+                         shift=shift, spike=spike, spike_prior=spike_prior).sum(dim=-1)
     if solver_args.threshold:
         z = encoder.soft_threshold(z)
     recon_loss = F.mse_loss((z @ A.T), x, reduction='none').mean(dim=-1)
-    z, iwae_loss = compute_iwae_loss(z, recon_loss, kl_loss, solver_args.iwae)
+    z, iwae_loss = compute_iwae_loss(z, recon_loss, solver_args.kl_weight * kl_loss, solver_args.iwae)
 
     return iwae_loss, recon_loss.mean(), kl_loss.mean(), z
 
