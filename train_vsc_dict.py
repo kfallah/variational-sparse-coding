@@ -64,7 +64,8 @@ if __name__ == "__main__":
     else:
         data_patches = np.moveaxis(extract_patches_2d(images[:, :, :-2], (train_args.patch_size, train_args.patch_size)), -1, 1). \
             reshape(-1, train_args.patch_size, train_args.patch_size)
-        val_patches = extract_patches_2d(images[:, :, -2], (train_args.patch_size, train_args.patch_size))
+        val_patches = np.moveaxis(extract_patches_2d(images[:, :, -2:], (train_args.patch_size, train_args.patch_size)), -1, 1). \
+            reshape(-1, train_args.patch_size, train_args.patch_size)
         with open(data_file, 'wb') as f:
             np.save(f, data_patches)
             np.save(f, val_patches)
@@ -80,15 +81,17 @@ if __name__ == "__main__":
 
     # LOAD DATASET #
     if not train_args.synthetic_data:
-        # Designate patches to use for training & validation. This step will also normalize the data.
-        val_patches = val_patches[np.linspace(1, val_patches.shape[0] - 1, train_args.val_samples, dtype=int), :, :]
-        val_patches = val_patches / np.linalg.norm(val_patches.reshape(-1, train_args.patch_size ** 2), axis=1)[:, None, None]
-        logging.info("Shape of validation dataset: {}".format(val_patches.shape))
-
         train_idx = np.linspace(1, data_patches.shape[0] - 1, train_args.train_samples, dtype=int)
         train_patches = data_patches[train_idx, :, :]
-        train_patches = train_patches / np.linalg.norm(train_patches.reshape(-1, train_args.patch_size ** 2), axis=1)[:, None, None]
+        train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
+        train_patches = (train_patches - train_mean) / train_std
         logging.info("Shape of training dataset: {}".format(train_patches.shape))
+
+        # Designate patches to use for training & validation. This step will also normalize the data.
+        val_patches = val_patches[np.linspace(1, val_patches.shape[0] - 1, train_args.val_samples, dtype=int), :, :]
+        val_patches = (val_patches - train_mean) / train_std
+        logging.info("Shape of validation dataset: {}".format(val_patches.shape))
+
     else:
         # Generate synthetic examples from ground truth dictionary
         assert train_args.fixed_dict, "Cannot train with synthetic examples when not using a fixed dictionary."
@@ -107,20 +110,12 @@ if __name__ == "__main__":
     # INITIALIZE 
     if solver_args.solver == "VI":
         encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
-    elif solver_args.solver  == "VILISTA":
-        encoder = VIEncoderLISTA(train_args.patch_size, train_args.dict_size, 
-                                 solver_args.lambda_, solver_args).to(default_device)
-    elif solver_args.solver  == "LISTA":
-        encoder = LISTA(train_args.patch_size, train_args.dict_size, 
-                        solver_args.lambda_).double().to(default_device)
 
-    if solver_args.solver != "FISTA":
         vi_opt = torch.optim.SGD(encoder.parameters(), lr=1e-3, #weight_decay=1e-4,
                                     momentum=0.9, nesterov=True)
         vi_scheduler = CycleScheduler(vi_opt, 1e-3, 
                                         n_iter=(train_args.epochs * train_patches.shape[0]) // train_args.batch_size,
                                         momentum=None, warmup_proportion=0.05)
-
         torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
 
     # Initialize empty arrays for tracking learning data
@@ -174,31 +169,22 @@ if __name__ == "__main__":
                     logging.info(f"GRAD VARIANCE: {np.var(grad_list, axis=0).mean():.4E}")
                 vi_opt.step()
                 vi_scheduler.step()
+
                 if solver_args.true_coeff and not train_args.fixed_dict:
                     b = FISTA(dictionary, patches, tau=solver_args.lambda_)
                 else:
                     b = b_cu.detach().cpu().numpy().T
-            elif solver_args.solver == "LISTA":
-                b = FISTA(dictionary, patches, tau=solver_args.lambda_)
-                patches_cu = torch.tensor(patches.T).to(default_device)
-                kl_loss, b_cu = encoder(patches_cu)
-
-                vi_opt.zero_grad()
-                recon_loss = F.mse_loss(b_cu, torch.tensor(b, device=b_cu.device).T)
-                recon_loss.backward()
-                vi_opt.step()
-                vi_scheduler.step()
 
             # Take gradient step on dictionaries
             generated_patch = dictionary @ b
             residual = patches - generated_patch
-            step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary
+            #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.
+            step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary#*select_penalty
 
             dictionary += step_size * step
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
             if train_args.normalize:
                 dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
-
             # Calculate loss after gradient step
             epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b) ** 2) + solver_args.lambda_ * np.sum(np.abs(b))
 
@@ -220,17 +206,11 @@ if __name__ == "__main__":
                 iwae_loss, kl_loss = 0., 0.
             elif solver_args.solver == "ADMM":
                 b_hat = ADMM(dictionary, patches, tau=solver_args.lambda_)
-            elif solver_args.solver == "VI" or solver_args.solver == "VILISTA":
+            elif solver_args.solver == "VI":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(dictionary, device=default_device).float()
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
-                    b_hat = b_cu.detach().cpu().numpy().T
-                    b_true = FISTA(dictionary, patches, tau=solver_args.lambda_)
-            elif solver_args.lambda_ == "LISTA":
-                with torch.no_grad():
-                    patches_cu = torch.tensor(patches.T).to(default_device)
-                    kl_loss, b_cu = encoder(patches_cu)
                     b_hat = b_cu.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=solver_args.lambda_)
 
@@ -275,8 +255,6 @@ if __name__ == "__main__":
 
         if solver_args.debug:
             print_debug(train_args, b_true.T, b_hat.T)
-            for d in range(train_args.dict_size):
-                logging.info(f"Dict {d}, norm: {np.sqrt(np.sum(dictionary ** 2, axis=0))[d]:.2E}")
             logging.info("Mean lambda value: {:.3E}".format(lambda_list[j].mean()))
             logging.info("Mean dict norm: {}".format(np.sqrt(np.sum(dictionary ** 2, axis=0)).mean()))
             logging.info("Est IWAE loss: {:.3E}".format(val_iwae_loss[j]))
