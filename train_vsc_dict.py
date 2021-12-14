@@ -16,6 +16,7 @@ import numpy as np
 import scipy.io
 from types import SimpleNamespace
 from sklearn.feature_extraction.image import extract_patches_2d
+from sklearn_extra.cluster import KMedoids
 
 import torch
 import torch.nn.functional as F
@@ -56,19 +57,27 @@ if __name__ == "__main__":
     images = np.ascontiguousarray(data_matlab['IMAGES'])
 
     # Extract patches using SciKit-Learn. Out of 10 images, 8 are used for training and 2 are used for validation.
-    data_file = f"data/imagepatches_{train_args.patch_size}.np"
+    data_file = f"data/imagepatches_{train_args.patch_size}_comb.np"
     if os.path.exists(data_file):
         with open(data_file, 'rb') as f:
             data_patches = np.load(f)
             val_patches = np.load(f)
     else:
-        data_patches = np.moveaxis(extract_patches_2d(images[:, :, :-2], (train_args.patch_size, train_args.patch_size)), -1, 1). \
-            reshape(-1, train_args.patch_size, train_args.patch_size)
-        val_patches = np.moveaxis(extract_patches_2d(images[:, :, -2:], (train_args.patch_size, train_args.patch_size)), -1, 1). \
-            reshape(-1, train_args.patch_size, train_args.patch_size)
-        with open(data_file, 'wb') as f:
-            np.save(f, data_patches)
-            np.save(f, val_patches)
+        data_patches = np.moveaxis(extract_patches_2d(images, (train_args.patch_size, train_args.patch_size)), -1, 1). \
+                                   reshape(-1, train_args.patch_size, train_args.patch_size)
+        train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
+        val_idx = np.linspace(1, data_patches.shape[0] - 1, int(len(data_patches)*0.2), dtype=int)
+        train_idx = np.ones(len(data_patches), bool)
+        train_idx[val_idx] = 0
+        val_patches = data_patches[val_idx]
+        data_patches = data_patches[train_idx]
+        #data_patches = np.moveaxis(extract_patches_2d(images[:, :, :-2], (train_args.patch_size, train_args.patch_size)), -1, 1). \
+        #    reshape(-1, train_args.patch_size, train_args.patch_size)
+        #val_patches = np.moveaxis(extract_patches_2d(images[:, :, -2:], (train_args.patch_size, train_args.patch_size)), -1, 1). \
+        #    reshape(-1, train_args.patch_size, train_args.patch_size)
+        #with open(data_file, 'wb') as f:
+        #    np.save(f, data_patches)
+        #    np.save(f, val_patches)
 
     # INITIALIZE DICTIONARY #
     if train_args.fixed_dict:
@@ -83,7 +92,7 @@ if __name__ == "__main__":
     if not train_args.synthetic_data:
         train_idx = np.linspace(1, data_patches.shape[0] - 1, train_args.train_samples, dtype=int)
         train_patches = data_patches[train_idx, :, :]
-        train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
+        #train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
         train_patches = (train_patches - train_mean) / train_std
         logging.info("Shape of training dataset: {}".format(train_patches.shape))
 
@@ -116,6 +125,29 @@ if __name__ == "__main__":
         vi_scheduler = CycleScheduler(vi_opt, 1e-3, 
                                         n_iter=(train_args.epochs * train_patches.shape[0]) // train_args.batch_size,
                                         momentum=None, warmup_proportion=0.05)
+
+        # Create core-set for prior
+        if solver_args.prior_method == "coreset":
+            mbed_file = np.load(solver_args.coreset_embed_path)
+            if solver_args.coreset_feat == "pca":
+                feat = mbed_file['pca_mbed']
+            elif solver_args.coreset_feat == "isomap":
+                feat = mbed_file['isomap_mbed']
+            elif solver_args.coreset_feat == "wavelet":
+                feat = mbed_file['wavelet_mbed']
+            else:
+                raise NotImplementedError
+
+            logging.info(f"Building core-set using {solver_args.coreset_alg} with {solver_args.coreset_size} centroids...")
+            if solver_args.coreset_alg == "kmedoids":
+                kmedoid = KMedoids(n_clusters=solver_args.coreset_size, random_state=0).fit(feat)                
+                encoder.coreset = torch.tensor(train_patches[kmedoid.medoid_indices_], device=default_device).reshape(solver_args.coreset_size , -1)
+                encoder.coreset_labels = torch.tensor(kmedoid.labels_, device=default_device)   
+                encoder.coreset_coeff = torch.tensor(mbed_file['codes'][kmedoid.medoid_indices_], device=default_device)              
+            else:
+                raise NotImplementedError
+            logging.info(f"...core-set succesfully built.")
+        
         torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
 
     # Initialize empty arrays for tracking learning data
@@ -124,12 +156,9 @@ if __name__ == "__main__":
     coeff_true = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
     coeff_est = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
     train_loss = np.zeros(train_args.epochs)
-    val_true_recon = np.zeros(train_args.epochs)
-    val_recon = np.zeros(train_args.epochs)
-    val_true_l1 = np.zeros(train_args.epochs)
-    val_l1 = np.zeros(train_args.epochs)
-    val_iwae_loss = np.zeros(train_args.epochs)
-    val_kl_loss = np.zeros(train_args.epochs)
+    val_true_recon, val_recon = np.zeros(train_args.epochs), np.zeros(train_args.epochs)
+    val_true_l1, val_l1 = np.zeros(train_args.epochs), np.zeros(train_args.epochs)
+    val_iwae_loss, val_kl_loss = np.zeros(train_args.epochs), np.zeros(train_args.epochs)
     train_time = np.zeros(train_args.epochs)
 
     # TRAIN MODEL #
@@ -137,9 +166,10 @@ if __name__ == "__main__":
     for j in range(train_args.epochs):
         epoch_loss = np.zeros(train_patches.shape[0] // train_args.batch_size)
         # Shuffle training data-set
-        np.random.shuffle(train_patches)
+        shuffler = np.random.permutation(len(train_patches))
         for i in range(train_patches.shape[0] // train_args.batch_size):
-            patches = train_patches[i * train_args.batch_size:(i + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
+            patches = train_patches[shuffler][i * train_args.batch_size:(i + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
+            patch_idx = shuffler[i * train_args.batch_size:(i + 1) * train_args.batch_size]
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
@@ -155,7 +185,7 @@ if __name__ == "__main__":
                 for s in range(var_samples):
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(dictionary, device=default_device).float()
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
 
                     vi_opt.zero_grad()
                     iwae_loss.backward()
@@ -178,7 +208,7 @@ if __name__ == "__main__":
             # Take gradient step on dictionaries
             generated_patch = dictionary @ b
             residual = patches - generated_patch
-            #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.
+            #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.5
             step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary#*select_penalty
 
             dictionary += step_size * step
@@ -198,19 +228,20 @@ if __name__ == "__main__":
         for i in range(val_patches.shape[0] // train_args.batch_size):
             # Load next batch of validation patches
             patches = val_patches[i * train_args.batch_size:(i + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
+            patch_idx = np.arange(i * train_args.batch_size, (i + 1) * train_args.batch_size)
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
                 b_hat = FISTA(dictionary, patches, tau=solver_args.lambda_)
                 b_true = np.array(b_hat)
-                iwae_loss, kl_loss = 0., 0.
+                iwae_loss, kl_loss = 0., np.array(0.)
             elif solver_args.solver == "ADMM":
                 b_hat = ADMM(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.solver == "VI":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(dictionary, device=default_device).float()
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
+                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
                     b_hat = b_cu.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=solver_args.lambda_)
 
@@ -219,8 +250,7 @@ if __name__ == "__main__":
             epoch_val_recon[i] = 0.5 * np.sum((patches - dictionary @ b_hat) ** 2)
             epoch_true_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_true))
             epoch_val_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_hat))
-            epoch_iwae_loss[i] = iwae_loss
-            epoch_kl_loss[i] = kl_loss
+            epoch_iwae_loss[i], epoch_kl_loss[i]  = iwae_loss, kl_loss.mean()
 
         # Decay step-size
         step_size = step_size * train_args.lr_decay
@@ -238,15 +268,12 @@ if __name__ == "__main__":
         # Save and print data from epoch
         train_time[j] = time.time() - init_time
         epoch_time = train_time[0] if j == 0 else train_time[j] - train_time[j - 1]
-        train_loss[j] = np.mean(epoch_loss)
-        val_true_recon[j] = np.mean(epoch_true_recon)
-        val_recon[j] = np.mean(epoch_val_recon)
-        val_true_l1[j] = np.mean(epoch_true_l1)
-        val_l1[j] = np.mean(epoch_val_l1)
-        val_iwae_loss[j] = np.mean(epoch_iwae_loss)
+        train_loss[j] = np.sum(epoch_loss) / len(train_patches)
+        val_recon[j], val_l1[j] = np.sum(epoch_val_recon) / len(val_patches), np.sum(epoch_val_l1) / len(val_patches)
+        val_true_recon[j], val_true_l1[j] = np.sum(epoch_true_recon) / len(val_patches), np.sum(epoch_true_l1) / len(val_patches)
+        val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         val_kl_loss[j] = np.mean(epoch_kl_loss)
-        coeff_est[j] = b_hat.T
-        coeff_true[j] = b_true.T
+        coeff_est[j], coeff_true[j] = b_hat.T, b_true.T
         if solver_args.threshold and solver_args.solver == "VI":
             lambda_list[j] = encoder.lambda_.data.cpu().numpy()
         else:
@@ -260,7 +287,7 @@ if __name__ == "__main__":
             logging.info("Est IWAE loss: {:.3E}".format(val_iwae_loss[j]))
             logging.info("Est KL loss: {:.3E}".format(val_kl_loss[j]))
             logging.info("Est total loss: {:.3E}".format(val_recon[j] + solver_args.lambda_ * val_l1[j]))
-            logging.info("True total loss: {:.3E}".format(val_l1[j] + solver_args.lambda_ * val_true_l1[j]))
+            logging.info("FISTA total loss: {:.3E}".format(val_true_recon[j] + solver_args.lambda_ * val_true_l1[j]))
 
         if j < 10 or (j + 1) % train_args.save_freq == 0 or (j + 1) == train_args.epochs:
             show_dict(dictionary, train_args.save_path + f"dictionary_epoch{j+1}.png")

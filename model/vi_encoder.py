@@ -29,11 +29,13 @@ class VIEncoder(nn.Module):
         if self.solver_args.prior_distribution == "concreteslab":
             self.spike = nn.Linear((img_size**2), dict_size)
             self.temp = 1.0
+
         if self.solver_args.prior_method == "vamp" or self.solver_args.prior_method == "clf":
             pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, (img_size**2))
             self.pseudo_inputs = nn.Parameter(pseudo_init, requires_grad=True)
         if self.solver_args.prior_method == "clf":
            self.clf_temp = 1.0
+
         if self.solver_args.threshold:
             self.lambda_ = torch.ones(dict_size) * solver_args.threshold_lambda
             if self.solver_args.theshold_learn:
@@ -44,22 +46,23 @@ class VIEncoder(nn.Module):
             self.lambda_ = torch.ones(z.shape[-1], device=z.device) * self.solver_args.threshold_lambda
         return F.relu(torch.abs(z) - torch.abs(self.lambda_)) * torch.sign(z)
 
-    def forward(self, x, A):
+    def forward(self, x, A, idx=None):
         feat = self.enc(x)
         b_logscale = self.scale(feat)
         b_shift = self.shift(feat)
 
         if self.solver_args.prior_distribution == "laplacian":
             iwae_loss, recon_loss, kl_loss, b = sample_laplacian(b_shift, b_logscale, x, A,
-                                                                 self, self.solver_args)
+                                                                 self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "gaussian":
             iwae_loss, recon_loss, kl_loss, b  = sample_gaussian(b_shift, b_logscale, x, A,
-                                                                 self, self.solver_args)
+                                                                 self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "concreteslab":
             logspike = -F.relu(-self.spike(feat))
             iwae_loss, recon_loss, kl_loss, b = sample_concreteslab(b_shift, b_logscale, logspike, x, A, 
                                                                     self, self.solver_args, 
-                                                                    self.temp, self.solver_args.spike_prior)       
+                                                                    self.temp, self.solver_args.spike_prior,
+                                                                    idx=idx)       
         else:
             raise NotImplementedError
         

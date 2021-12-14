@@ -1,0 +1,47 @@
+{
+    "train":
+    {
+        "device": 0,
+        "seed": 0,
+        "fixed_dict": false,
+        "synthetic_data": false,
+        "synthetic_support": 40,
+        "train_samples": 50000,
+        "val_samples": 5000,
+        "batch_size": 100,
+        "dict_size": 225,
+        "patch_size": 11,
+        "epochs": 200,
+        "save_freq": 20,
+        "save_path": "results/gaussian_coreset_fista_single_v2/",
+        "normalize": false,
+        "fnorm_reg": 1e-4,
+        "lr": 0.5,
+        "lr_decay": 0.99,
+        "compute_stats": false,
+        "stat_im_count": 40000
+    },
+    "solver":
+    {
+        "solver": "VI",
+        "feature_enc": "MLP",
+        "lambda_": 1.75,
+        "debug": true,
+        "true_coeff": false,
+        "gradient_variance": false,
+        "iwae": false,
+        "num_samples": 1,
+        "threshold": true,
+        "threshold_lambda": 1.75,
+        "theshold_learn": false,
+        "prior_distribution": "gaussian",
+        "prior_method": "coreset",
+        "coreset_embed_path": "./data/mbedpatches_11.npz",
+        "coreset_feat": "wavelet",
+        "coreset_alg": "kmedoids",
+        "coreset_weights": "FISTA",
+        "coreset_prior_type": "single",
+        "coreset_size": 500,
+        "kl_weight": 1e-2
+    }
+}

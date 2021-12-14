@@ -9,8 +9,8 @@
         "train_samples": 50000,
         "val_samples": 5000,
         "batch_size": 100,
-        "dict_size": 256,
-        "patch_size": 12,
+        "dict_size": 225,
+        "patch_size": 11,
         "epochs": 200,
         "save_freq": 20,
         "save_path": "results/laplacian_fixed/",
@@ -31,12 +31,12 @@
         "gradient_variance": false,
         "iwae": false,
         "num_samples": 1,
-        "threshold": true,
+        "threshold": false,
         "threshold_lambda": 0.75,
         "theshold_learn": false,
         "prior_distribution": "laplacian",
         "prior_method": "fixed",
-        "spread_prior": 1e0,
+        "spread_prior": 1e-1,
         "kl_weight": 1e-2
     }
 }
