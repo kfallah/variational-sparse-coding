@@ -48,7 +48,6 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
     multi_info = np.zeros(len(load_list))
     posterior_collapse = np.zeros(len(load_list))
     coeff_collapse = np.zeros(len(load_list))
-    iwae_likelihood = np.zeros(len(load_list))
     code_list = np.zeros((len(load_list), train_patches.shape[0], phi.shape[1]))
     recovered_dict = np.zeros((len(load_list), *phi.shape))
 
@@ -80,7 +79,6 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
                 coeff_collapse_count[k] += (np.abs(code_est[:, k]) <= 1e-2).sum() / train_patches.shape[0]
             
             code_list[idx, i*train_args.batch_size:(i+1)*train_args.batch_size] = code_est
-            iwae_likelihood[idx] += iwae_loss.detach().cpu()
 
         C_sr = (train_patches.T @ code_list[idx]) / len(train_patches)
         C_rr = (code_list[idx].T @ code_list[idx]) / len(train_patches)
@@ -88,24 +86,22 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
         posterior_collapse[idx] = 100. * (kl_collapse_count >= 0.95).sum() / phi.shape[1]
         coeff_collapse[idx] = 100. * (coeff_collapse_count >= 0.95).sum() / phi.shape[1]
         multi_info[idx] = drv.information_multi(code_list[idx].T)
-        iwae_likelihood[idx] /= (train_patches.shape[0] // train_args.batch_size)
         recovered_dict[idx] = C_sr @ np.linalg.pinv(C_rr)
         show_dict(C_sr @ np.linalg.pinv(C_rr), train_args.save_path + f"recovered_dict{method}.png")
 
         logging.info(f"Epoch {method}, multi-information: {multi_info[idx]:.3E}, % posterior collapse: {posterior_collapse[idx]:.2f}%," +\
-                     f" % coeff collapse: {coeff_collapse[idx]:.2f}%, iwae likelihood: {iwae_likelihood[idx]:.3E}")
+                     f" % coeff collapse: {coeff_collapse[idx]:.2f}%")
     np.savez_compressed(run_path + "/encoder_statistics.npz",
         code_list=code_list, posterior_collapse=posterior_collapse, 
         coeff_collapse=coeff_collapse, multi_info=multi_info, 
-        iwae_likelihood=iwae_likelihood, load_list=load_list,
-        recovered_dict=recovered_dict)
+        load_list=load_list, ecovered_dict=recovered_dict)
 
 if __name__ == "__main__":
     # Load arguments for training via config file input to CLI #
     parser = argparse.ArgumentParser(description='Compute VSC Statistics')
     parser.add_argument('-r', '--run', type=str, required=True,
                         help='Path to run file to compute statistics for.')
-    parser.add_argument('-n', '--image_count', type=int, default=40000,
+    parser.add_argument('-n', '--image_count', type=int, default=50000,
                         help='Number of samples to compute statistics from')
     args = parser.parse_args()
     with open(args.run + "/config.json") as json_data:

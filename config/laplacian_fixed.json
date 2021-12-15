@@ -1,7 +1,7 @@
 {
     "train":
     {
-        "device": 0,
+        "device": 1,
         "seed": 0,
         "fixed_dict": false,
         "synthetic_data": false,
@@ -13,24 +13,25 @@
         "patch_size": 11,
         "epochs": 200,
         "save_freq": 20,
-        "save_path": "results/laplacian_fixed/",
-        "normalize": true,
-        "fnorm_reg": 0,
+        "save_path": "results/laplacian_fixed_iwae2/",
+        "normalize": false,
+        "fnorm_reg": 1e-4,
         "lr": 5e-1,
         "lr_decay": 0.99,
-        "compute_stats": false,
-        "stat_im_count": 40000
+        "compute_stats": true,
+        "stat_im_count": 50000
     },
     "solver":
     {
         "solver": "VI",
         "feature_enc": "MLP",
+        "vsc_lr": 1e-2,
         "lambda_": 1e-1,
         "debug": true,
         "true_coeff": false,
         "gradient_variance": false,
-        "iwae": false,
-        "num_samples": 1,
+        "iwae": true,
+        "num_samples": 20,
         "threshold": false,
         "threshold_lambda": 0.75,
         "theshold_learn": false,

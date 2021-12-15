@@ -57,7 +57,7 @@ if __name__ == "__main__":
     images = np.ascontiguousarray(data_matlab['IMAGES'])
 
     # Extract patches using SciKit-Learn. Out of 10 images, 8 are used for training and 2 are used for validation.
-    data_file = f"data/imagepatches_{train_args.patch_size}_comb.np"
+    data_file = f"data/imagepatches_{train_args.patch_size}_{train_args.seed}.np"
     if os.path.exists(data_file):
         with open(data_file, 'rb') as f:
             data_patches = np.load(f)
@@ -65,19 +65,17 @@ if __name__ == "__main__":
     else:
         data_patches = np.moveaxis(extract_patches_2d(images, (train_args.patch_size, train_args.patch_size)), -1, 1). \
                                    reshape(-1, train_args.patch_size, train_args.patch_size)
+        np.random.shuffle(data_patches)
+        
         train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
         val_idx = np.linspace(1, data_patches.shape[0] - 1, int(len(data_patches)*0.2), dtype=int)
         train_idx = np.ones(len(data_patches), bool)
         train_idx[val_idx] = 0
         val_patches = data_patches[val_idx]
         data_patches = data_patches[train_idx]
-        #data_patches = np.moveaxis(extract_patches_2d(images[:, :, :-2], (train_args.patch_size, train_args.patch_size)), -1, 1). \
-        #    reshape(-1, train_args.patch_size, train_args.patch_size)
-        #val_patches = np.moveaxis(extract_patches_2d(images[:, :, -2:], (train_args.patch_size, train_args.patch_size)), -1, 1). \
-        #    reshape(-1, train_args.patch_size, train_args.patch_size)
-        #with open(data_file, 'wb') as f:
-        #    np.save(f, data_patches)
-        #    np.save(f, val_patches)
+        with open(data_file, 'wb') as f:
+            np.save(f, data_patches)
+            np.save(f, val_patches)
 
     # INITIALIZE DICTIONARY #
     if train_args.fixed_dict:
@@ -120,9 +118,9 @@ if __name__ == "__main__":
     if solver_args.solver == "VI":
         encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
 
-        vi_opt = torch.optim.SGD(encoder.parameters(), lr=1e-3, #weight_decay=1e-4,
+        vi_opt = torch.optim.SGD(encoder.parameters(), lr=solver_args.vsc_lr, #weight_decay=1e-4,
                                     momentum=0.9, nesterov=True)
-        vi_scheduler = CycleScheduler(vi_opt, 1e-3, 
+        vi_scheduler = CycleScheduler(vi_opt, solver_args.vsc_lr, 
                                         n_iter=(train_args.epochs * train_patches.shape[0]) // train_args.batch_size,
                                         momentum=None, warmup_proportion=0.05)
 
@@ -264,6 +262,10 @@ if __name__ == "__main__":
             encoder.clf_temp *= 0.9
             if encoder.clf_temp <= solver_args.clf_temp_min:
                 encoder.clf_temp = solver_args.clf_temp_min
+        if solver_args.prior_distribution == "concreteslab" or solver_args.prior_distribution == "laplacian":
+            encoder.warmup += 2e-4
+            if encoder.warmup >= 1.0:
+                encoder.warmup = 1.0
 
         # Save and print data from epoch
         train_time[j] = time.time() - init_time
@@ -272,7 +274,6 @@ if __name__ == "__main__":
         val_recon[j], val_l1[j] = np.sum(epoch_val_recon) / len(val_patches), np.sum(epoch_val_l1) / len(val_patches)
         val_true_recon[j], val_true_l1[j] = np.sum(epoch_true_recon) / len(val_patches), np.sum(epoch_true_l1) / len(val_patches)
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
-        val_kl_loss[j] = np.mean(epoch_kl_loss)
         coeff_est[j], coeff_true[j] = b_hat.T, b_true.T
         if solver_args.threshold and solver_args.solver == "VI":
             lambda_list[j] = encoder.lambda_.data.cpu().numpy()

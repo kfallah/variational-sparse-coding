@@ -25,6 +25,7 @@
     {
         "solver": "VI",
         "feature_enc": "MLP",
+        "vsc_lr": 1e-2,
         "lambda_": 0.175,
         "debug": true,
         "true_coeff": false,

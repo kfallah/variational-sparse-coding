@@ -29,6 +29,10 @@ class VIEncoder(nn.Module):
         if self.solver_args.prior_distribution == "concreteslab":
             self.spike = nn.Linear((img_size**2), dict_size)
             self.temp = 1.0
+            self.warmup = 0.0
+        
+        if self.solver_args.prior_distribution == "laplacian":
+            self.warmup = 0.1
 
         if self.solver_args.prior_method == "vamp" or self.solver_args.prior_method == "clf":
             pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, (img_size**2))

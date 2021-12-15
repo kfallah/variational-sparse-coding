@@ -171,16 +171,15 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
     logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
 
-    scale = torch.exp(logscale)
+    scale = torch.exp(logscale) * encoder.warmup
     u = torch.rand_like(logscale) - 0.5
-    eps = -scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-10)) 
+    eps = -scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-6)) 
     if solver_args.threshold:
         z = encoder.soft_threshold(eps)
         non_zero = torch.nonzero(z, as_tuple=True)  
         z[non_zero] = shift[non_zero] + z[non_zero]
     else:
         z = shift + eps
-
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = F.mse_loss((z @ A.T), x, reduction='none')
@@ -236,6 +235,7 @@ def compute_iwae_loss(z, recon_loss, kl_loss, iwae=False):
         iwae_loss = (weight * log_loss).sum(dim=-1).mean()
     else:
         # In traditional VAE, the loss is just a simple average over samples
-        z = z[:, 0]
+        z_idx = torch.argmin((recon_loss + kl_loss), dim=-1).detach()
+        z = z[torch.arange(len(z)), z_idx]
         iwae_loss = (recon_loss + kl_loss).mean()
     return z, iwae_loss
