@@ -13,10 +13,7 @@ import logging
 import json, codecs
 
 import numpy as np
-import scipy.io
 from types import SimpleNamespace
-from sklearn.feature_extraction.image import extract_patches_2d
-from sklearn_extra.cluster import KMedoids
 
 import torch
 import torch.nn.functional as F
@@ -27,6 +24,7 @@ from utils.solvers import FISTA, ADMM
 from model.lista import VIEncoderLISTA, LISTA
 from model.vi_encoder import VIEncoder
 from model.scheduler import CycleScheduler
+from utils.data_loader import load_whitened_images
 from utils.util import *
 
 # Load arguments for training via config file input to CLI #
@@ -52,31 +50,6 @@ if __name__ == "__main__":
     np.random.seed(train_args.seed)
     torch.manual_seed(train_args.seed)
 
-    # LOAD DATA #
-    data_matlab = scipy.io.loadmat('./data/whitened_images.mat')
-    images = np.ascontiguousarray(data_matlab['IMAGES'])
-
-    # Extract patches using SciKit-Learn. Out of 10 images, 8 are used for training and 2 are used for validation.
-    data_file = f"data/imagepatches_{train_args.patch_size}_{train_args.seed}.np"
-    if os.path.exists(data_file):
-        with open(data_file, 'rb') as f:
-            data_patches = np.load(f)
-            val_patches = np.load(f)
-    else:
-        data_patches = np.moveaxis(extract_patches_2d(images, (train_args.patch_size, train_args.patch_size)), -1, 1). \
-                                   reshape(-1, train_args.patch_size, train_args.patch_size)
-        np.random.shuffle(data_patches)
-        
-        train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
-        val_idx = np.linspace(1, data_patches.shape[0] - 1, int(len(data_patches)*0.2), dtype=int)
-        train_idx = np.ones(len(data_patches), bool)
-        train_idx[val_idx] = 0
-        val_patches = data_patches[val_idx]
-        data_patches = data_patches[train_idx]
-        with open(data_file, 'wb') as f:
-            np.save(f, data_patches)
-            np.save(f, val_patches)
-
     # INITIALIZE DICTIONARY #
     if train_args.fixed_dict:
         dictionary = np.load("data/ground_truth_dict.npy")
@@ -86,33 +59,7 @@ if __name__ == "__main__":
         dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
         step_size = train_args.lr
 
-    # LOAD DATASET #
-    if not train_args.synthetic_data:
-        train_idx = np.linspace(1, data_patches.shape[0] - 1, train_args.train_samples, dtype=int)
-        train_patches = data_patches[train_idx, :, :]
-        #train_mean, train_std = np.mean(data_patches, axis=0), np.std(data_patches, axis=0)
-        train_patches = (train_patches - train_mean) / train_std
-        logging.info("Shape of training dataset: {}".format(train_patches.shape))
-
-        # Designate patches to use for training & validation. This step will also normalize the data.
-        val_patches = val_patches[np.linspace(1, val_patches.shape[0] - 1, train_args.val_samples, dtype=int), :, :]
-        val_patches = (val_patches - train_mean) / train_std
-        logging.info("Shape of validation dataset: {}".format(val_patches.shape))
-
-    else:
-        # Generate synthetic examples from ground truth dictionary
-        assert train_args.fixed_dict, "Cannot train with synthetic examples when not using a fixed dictionary."
-        val_codes = np.zeros((train_args.val_samples, dictionary.shape[1]))
-        val_support = np.random.randint(0, high=dictionary.shape[1], size=(train_args.val_samples, train_args.synthetic_support))
-        for i in range(train_args.val_samples):
-            val_codes[i, val_support[i]] = np.random.randn(train_args.synthetic_support)
-        val_patches = val_codes @ dictionary.T
-
-        train_codes = np.zeros((train_args.train_samples, dictionary.shape[1]))
-        train_support = np.random.randint(0, high=dictionary.shape[1], size=(train_args.train_samples, train_args.synthetic_support))
-        for i in range(train_args.train_samples):
-            train_codes[i, train_support[i]] = np.random.randn(train_args.synthetic_support)
-        train_patches = train_codes @ dictionary.T
+    train_patches, val_patches = load_whitened_images(train_args, dictionary)
 
     # INITIALIZE 
     if solver_args.solver == "VI":
@@ -126,25 +73,7 @@ if __name__ == "__main__":
 
         # Create core-set for prior
         if solver_args.prior_method == "coreset":
-            mbed_file = np.load(solver_args.coreset_embed_path)
-            if solver_args.coreset_feat == "pca":
-                feat = mbed_file['pca_mbed']
-            elif solver_args.coreset_feat == "isomap":
-                feat = mbed_file['isomap_mbed']
-            elif solver_args.coreset_feat == "wavelet":
-                feat = mbed_file['wavelet_mbed']
-            else:
-                raise NotImplementedError
-
-            logging.info(f"Building core-set using {solver_args.coreset_alg} with {solver_args.coreset_size} centroids...")
-            if solver_args.coreset_alg == "kmedoids":
-                kmedoid = KMedoids(n_clusters=solver_args.coreset_size, random_state=0).fit(feat)                
-                encoder.coreset = torch.tensor(train_patches[kmedoid.medoid_indices_], device=default_device).reshape(solver_args.coreset_size , -1)
-                encoder.coreset_labels = torch.tensor(kmedoid.labels_, device=default_device)   
-                encoder.coreset_coeff = torch.tensor(mbed_file['codes'][kmedoid.medoid_indices_], device=default_device)              
-            else:
-                raise NotImplementedError
-            logging.info(f"...core-set succesfully built.")
+            build_coreset(solver_args, encoder, train_patches, default_device)
         
         torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
 

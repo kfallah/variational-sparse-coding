@@ -1,5 +1,6 @@
 results
-results_sweep
+prior_comp
+baseline
 *.txt
 figures
 *__pycache__*

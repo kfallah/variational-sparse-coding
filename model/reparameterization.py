@@ -6,6 +6,7 @@ import torch
 import torch.nn.functional as F
 
 from utils.solvers import FISTA, ADMM
+from model.util import gumbel_rao_argmax
 
 def compute_kl(solver_args, **kwargs):
     if solver_args.prior_method == "fixed":
@@ -148,12 +149,13 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
 
     scale = torch.exp(0.5*logscale)
     eps = torch.randn_like(scale)
+    z = shift + eps*scale
+
     if solver_args.threshold:
-        z = encoder.soft_threshold(eps*scale)
-        non_zero = torch.nonzero(z, as_tuple=True)  
-        z[non_zero] = shift[non_zero] + z[non_zero]
-    else:
-        z = shift + eps*scale
+        z_thresh = encoder.soft_threshold(eps*scale)
+        non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+        z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
+        z = z + (z_thresh - z).detach()
 
     kl_loss = compute_kl(solver_args, x=x, A=A, z=(shift + eps*scale), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
@@ -202,16 +204,24 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
     logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
     logspike = logspike.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+    spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
 
     std = torch.exp(0.5*logscale)
     eps = torch.randn_like(std)
     gaussian = eps.mul(std).add_(shift)
-    eta = torch.rand_like(std)
-    u = torch.log(eta) - torch.log(1 - eta)
-    selection = torch.sigmoid((u + logspike) / temp)
-    z = selection * gaussian
 
-    spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
+    #eta = torch.rand_like(std)
+    #u = torch.log(eta) - torch.log(1 - eta)
+    #selection = torch.sigmoid((u + logspike) / temp)
+    #selection_passthru = torch.round(selection)
+    #selection_use = selection + (selection_passthru - selection).detach()
+
+    spike_logit = torch.stack([(1 - spike), spike], dim=-1)
+    selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
+    selection_use = torch.argmax(selection, dim=-1)
+
+    z = selection_use * gaussian
+
     kl_loss = compute_kl(solver_args, x=x, z=z, encoder=encoder, logscale=logscale,
                          shift=shift, logspike=logspike, spike=spike, 
                          spike_prior=spike_prior, idx=idx)

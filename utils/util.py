@@ -1,6 +1,8 @@
 import logging
 
 import numpy as np
+import torch
+from sklearn_extra.cluster import KMedoids
 
 def print_debug(train_args, b_true, b_hat):
     total_nz = np.count_nonzero(b_hat, axis=1)
@@ -25,3 +27,24 @@ def print_debug(train_args, b_true, b_hat):
     logging.info(f"Mean true coeff magnitude: {true_coeff}")
     logging.info("L1 distance with true coeff: {:.3E}".format(np.abs(b_hat - b_true).sum()))
     logging.info("Coeff support accuracy: {:.2f}%".format(100.*coeff_acc))
+
+def build_coreset(solver_args, encoder, train_patches, default_device):
+    mbed_file = np.load(solver_args.coreset_embed_path)
+    if solver_args.coreset_feat == "pca":
+        feat = mbed_file['pca_mbed']
+    elif solver_args.coreset_feat == "isomap":
+        feat = mbed_file['isomap_mbed']
+    elif solver_args.coreset_feat == "wavelet":
+        feat = mbed_file['wavelet_mbed']
+    else:
+        raise NotImplementedError
+
+    logging.info(f"Building core-set using {solver_args.coreset_alg} with {solver_args.coreset_size} centroids...")
+    if solver_args.coreset_alg == "kmedoids":
+        kmedoid = KMedoids(n_clusters=solver_args.coreset_size, random_state=0).fit(feat)                
+        encoder.coreset = torch.tensor(train_patches[kmedoid.medoid_indices_], device=default_device).reshape(solver_args.coreset_size , -1)
+        encoder.coreset_labels = torch.tensor(kmedoid.labels_, device=default_device)   
+        encoder.coreset_coeff = torch.tensor(mbed_file['codes'][kmedoid.medoid_indices_], device=default_device)              
+    else:
+        raise NotImplementedError
+    logging.info(f"...core-set succesfully built.")
