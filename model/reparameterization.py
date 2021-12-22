@@ -210,15 +210,15 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     eps = torch.randn_like(std)
     gaussian = eps.mul(std).add_(shift)
 
-    #eta = torch.rand_like(std)
-    #u = torch.log(eta) - torch.log(1 - eta)
-    #selection = torch.sigmoid((u + logspike) / temp)
-    #selection_passthru = torch.round(selection)
-    #selection_use = selection + (selection_passthru - selection).detach()
+    eta = torch.rand_like(std)
+    u = torch.log(eta) - torch.log(1 - eta)
+    selection = torch.sigmoid((u + logspike) / temp)
+    selection_passthru = torch.round(selection)
+    selection_use = selection + (selection_passthru - selection).detach()
 
-    spike_logit = torch.stack([(1 - spike), spike], dim=-1)
-    selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
-    selection_use = torch.argmax(selection, dim=-1)
+    #spike_logit = torch.stack([(1 - spike), spike], dim=-1)
+    #selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
+    #selection_use = torch.argmax(selection, dim=-1)
 
     z = selection_use * gaussian
 

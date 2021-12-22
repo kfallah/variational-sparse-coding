@@ -11,12 +11,10 @@ import time
 import os
 import logging
 import json, codecs
-
-import numpy as np
 from types import SimpleNamespace
 
+import numpy as np
 import torch
-import torch.nn.functional as F
 
 from compute_vsc_statistics import compute_statistics
 from utils.dict_plotting import show_dict
@@ -103,27 +101,13 @@ if __name__ == "__main__":
                 b = FISTA(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.solver == "ADMM":
                 b = ADMM(dictionary, patches, tau=solver_args.lambda_)
-            elif solver_args.solver == "VI" or solver_args.solver == "VILISTA":
-                if i == 0 and solver_args.gradient_variance:
-                    var_samples = 50
-                else:
-                    var_samples = 1
-                grad_list = []
-                for s in range(var_samples):
-                    patches_cu = torch.tensor(patches.T).float().to(default_device)
-                    dict_cu = torch.tensor(dictionary, device=default_device).float()
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
+            elif solver_args.solver == "VI":
+                patches_cu = torch.tensor(patches.T).float().to(default_device)
+                dict_cu = torch.tensor(dictionary, device=default_device).float()
+                iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
 
-                    vi_opt.zero_grad()
-                    iwae_loss.backward()
-
-                    model_grad = [param.grad.data.reshape(-1) for param in encoder.parameters()]
-                    model_grad = torch.cat(model_grad)
-                    grad_list.append(model_grad.detach().cpu().numpy())
-
-                grad_list = np.stack(grad_list)
-                if i == 0 and solver_args.gradient_variance:
-                    logging.info(f"GRAD VARIANCE: {np.var(grad_list, axis=0).mean():.4E}")
+                vi_opt.zero_grad()
+                iwae_loss.backward()
                 vi_opt.step()
                 vi_scheduler.step()
 
@@ -137,8 +121,8 @@ if __name__ == "__main__":
             residual = patches - generated_patch
             #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.5
             step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary#*select_penalty
-
             dictionary += step_size * step
+            
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
             if train_args.normalize:
                 dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
@@ -175,8 +159,8 @@ if __name__ == "__main__":
             # Compute and save loss
             epoch_true_recon[i] = 0.5 * np.sum((patches - dictionary @ b_true) ** 2)
             epoch_val_recon[i] = 0.5 * np.sum((patches - dictionary @ b_hat) ** 2)
-            epoch_true_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_true))
-            epoch_val_l1[i] = solver_args.lambda_ * np.sum(np.abs(b_hat))
+            epoch_true_l1[i] = np.sum(np.abs(b_true))
+            epoch_val_l1[i] = np.sum(np.abs(b_hat))
             epoch_iwae_loss[i], epoch_kl_loss[i]  = iwae_loss, kl_loss.mean()
 
         # Decay step-size

@@ -60,3 +60,22 @@ def load_whitened_images(train_args, dictionary):
         train_patches = train_codes @ dictionary.T
 
     return train_patches, val_patches
+
+def _calcx(theta,phi):
+    x = np.multiply(np.sin(theta),np.cos(phi))
+    y = np.multiply(np.sin(theta),np.sin(phi))
+    z = np.cos(theta)
+ 
+    return x,y,z
+
+def create_spherical_data(batch_size,kappa=8):
+    theta1 = np.random.rand(batch_size)*2*np.pi;
+    phi1 = np.random.rand(batch_size)*2*np.pi;
+    theta2 = np.random.vonmises(theta1,kappa)
+    phi2 = np.random.vonmises(phi1,kappa)
+    xtemp,ytemp,ztemp = _calcx(theta1,phi1)
+    x0 = np.array([xtemp,ytemp,ztemp]).T
+    xtemp,ytemp,ztemp = _calcx(theta2,phi2)
+    x1 = np.array([xtemp,ytemp,ztemp]).T
+
+    return x0, x1

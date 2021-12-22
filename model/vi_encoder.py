@@ -7,6 +7,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from model.reparameterization import *
+
 from model.feature_enc import MLPEncoder
 
 class VIEncoder(nn.Module):
