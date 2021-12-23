@@ -1,7 +1,7 @@
 {
     "train":
     {
-        "device": 1,
+        "device": 0,
         "seed": 0,
         "fixed_dict": false,
         "synthetic_data": false,
@@ -13,7 +13,7 @@
         "patch_size": 11,
         "epochs": 200,
         "save_freq": 20,
-        "save_path": "results/laplacian_fixed_iwae2/",
+        "save_path": "results/laplacian_thresh_iwae/",
         "normalize": false,
         "fnorm_reg": 1e-4,
         "lr": 5e-1,
@@ -32,8 +32,8 @@
         "gradient_variance": false,
         "iwae": true,
         "num_samples": 20,
-        "threshold": false,
-        "threshold_lambda": 0.75,
+        "threshold": true,
+        "threshold_lambda": 3e-2,
         "theshold_learn": false,
         "prior_distribution": "laplacian",
         "prior_method": "fixed",

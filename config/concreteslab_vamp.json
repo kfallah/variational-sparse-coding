@@ -40,6 +40,7 @@
         "num_pseudo_inputs": 500,
         "spread_prior": 1e0,
         "spike_prior": 0.2,
+        "estimator": "gumbel",
         "temp_min": 4e-1,
         "kl_weight": 1e-2
     }

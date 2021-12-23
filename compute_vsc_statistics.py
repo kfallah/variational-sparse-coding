@@ -21,26 +21,18 @@ from pyitlib import discrete_random_variable as drv
 from matplotlib import pyplot as plt
 
 from utils.solvers import FISTA
+from utils.data_loader import load_whitened_images
 from utils.dict_plotting import show_dict
 from model.lista import VIEncoderLISTA, LISTA
 from model.vi_encoder import VIEncoder
 
-def compute_statistics(run_path, im_count, train_args, solver_args):
-    solver_args.iwae = True
-    solver_args.num_samples = 20
+def compute_statistics(run_path, train_args, solver_args):
+    solver_args.iwae = False
+    solver_args.num_samples = 1
 
-    phi = np.load("data/mbedpatches_11.npz")['phi']
-    data_file = f"data/imagepatches_11.np"
+    final_phi = np.load(train_args.save_path + 'train_savefile.npz')['phi'][train_args.epochs - 1]
+    train_patches, val_patches = load_whitened_images(train_args, final_phi)
     default_device = torch.device('cuda', train_args.device)
-    assert os.path.exists(data_file), "Processed image patches needed in data folder."
-    with open(data_file, 'rb') as f:
-        data_patches = np.load(f)
-    logging.basicConfig(filename=os.path.join(run_path, 'statistics.log'), 
-                        filemode='w', level=logging.DEBUG)
-    train_idx = np.linspace(1, data_patches.shape[0] - 1, im_count, dtype=int)
-    train_patches = data_patches[train_idx, :, :].reshape(-1, 11**2)
-    train_mean, train_std = np.mean(train_patches, axis=0), np.std(train_patches, axis=0)
-    train_patches = (train_patches - train_mean) / train_std
 
     load_list = [int(re.search(r'epoch([0-9].*).pt', f)[1]) for f in os.listdir(run_path) if re.search(r'epoch([0-9].*).pt', f)]
     load_list = np.sort(load_list)
@@ -48,24 +40,32 @@ def compute_statistics(run_path, im_count, train_args, solver_args):
     multi_info = np.zeros(len(load_list))
     posterior_collapse = np.zeros(len(load_list))
     coeff_collapse = np.zeros(len(load_list))
-    code_list = np.zeros((len(load_list), train_patches.shape[0], phi.shape[1]))
-    recovered_dict = np.zeros((len(load_list), *phi.shape))
+    code_list = np.zeros((len(load_list), train_patches.shape[0], final_phi.shape[1]))
+    recovered_dict = np.zeros((len(load_list), *final_phi.shape))
 
     for idx, method in enumerate(load_list):
         np.random.seed(train_args.seed)
         torch.manual_seed(train_args.seed)
+        
+        if solver_args.solver != 'FISTA':
+            encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
+            encoder.load_state_dict(torch.load(run_path  + f"/encoderstate_epoch{method}.pt")['model_state'])
+            encoder.ramp_hyperparams()
 
-        encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
-        encoder.load_state_dict(torch.load(run_path  + f"/encoderstate_epoch{method}.pt")['model_state'])
+        if method == 0:
+            phi = np.random.randn(train_args.patch_size ** 2, train_args.dict_size)
+            phi /= np.sqrt(np.sum(phi ** 2, axis=0))
+        else:
+            phi = np.load(train_args.save_path + 'train_savefile.npz')['phi'][method - 1]
 
-        kl_collapse_count = np.zeros(phi.shape[1])
-        coeff_collapse_count = np.zeros(phi.shape[1])
+        kl_collapse_count = np.zeros(final_phi.shape[1])
+        coeff_collapse_count = np.zeros(final_phi.shape[1])
         for i in range(train_patches.shape[0] // train_args.batch_size):
             patches = train_patches[i * train_args.batch_size:(i + 1) * train_args.batch_size].T
 
             if solver_args.solver == 'FISTA':
                 code_est = FISTA(phi, patches, tau=solver_args.lambda_).T
-                kl_loss = 1e99 * np.ones_like(code_est)
+                kl_loss = np.zeros_like(code_est)
             else:
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
@@ -101,12 +101,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Compute VSC Statistics')
     parser.add_argument('-r', '--run', type=str, required=True,
                         help='Path to run file to compute statistics for.')
-    parser.add_argument('-n', '--image_count', type=int, default=50000,
-                        help='Number of samples to compute statistics from')
     args = parser.parse_args()
     with open(args.run + "/config.json") as json_data:
         config_data = json.load(json_data)
     train_args = SimpleNamespace(**config_data['train'])
     solver_args = SimpleNamespace(**config_data['solver'])
     
-    compute_statistics(args.run, args.image_count, train_args, solver_args)
+    compute_statistics(args.run, train_args, solver_args)

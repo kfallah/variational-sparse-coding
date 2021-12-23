@@ -176,10 +176,12 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     scale = torch.exp(logscale) * encoder.warmup
     u = torch.rand_like(logscale) - 0.5
     eps = -scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-6)) 
+    z=(shift + eps)
     if solver_args.threshold:
-        z = encoder.soft_threshold(eps)
-        non_zero = torch.nonzero(z, as_tuple=True)  
-        z[non_zero] = shift[non_zero] + z[non_zero]
+        z_thresh = encoder.soft_threshold(eps)
+        non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+        z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
+        z = z + (z_thresh - z).detach()
     else:
         z = shift + eps
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
@@ -213,12 +215,16 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     eta = torch.rand_like(std)
     u = torch.log(eta) - torch.log(1 - eta)
     selection = torch.sigmoid((u + logspike) / temp)
-    selection_passthru = torch.round(selection)
-    selection_use = selection + (selection_passthru - selection).detach()
 
-    #spike_logit = torch.stack([(1 - spike), spike], dim=-1)
-    #selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
-    #selection_use = torch.argmax(selection, dim=-1)
+    if solver_args.estimator == "gumbel":
+        selection_use = selection
+    elif solver_args.estimator == "straight":
+        selection_passthru = torch.round(selection)
+        selection_use = selection + (selection_passthru - selection).detach()
+    elif solver_args.estimator == "gumbelrao":
+        spike_logit = torch.stack([(1 - spike), spike], dim=-1)
+        selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
+        selection_use = torch.argmax(selection, dim=-1)
 
     z = selection_use * gaussian
 

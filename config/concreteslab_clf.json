@@ -29,7 +29,6 @@
         "lambda_": 0.175,
         "debug": true,
         "true_coeff": false,
-        "gradient_variance": false,
         "iwae": true,
         "num_samples": 20,
         "threshold": false,
@@ -40,6 +39,7 @@
         "num_pseudo_inputs": 200,
         "spread_prior": 1e-1,
         "spike_prior": 0.2,
+        "estimator": "gumbel",
         "temp_min": 5e-3,
         "clf_temp_min": 1e-2,
         "kl_weight": 1e-2

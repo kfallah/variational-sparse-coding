@@ -129,6 +129,21 @@ if __name__ == "__main__":
             # Calculate loss after gradient step
             epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b) ** 2) + solver_args.lambda_ * np.sum(np.abs(b))
 
+            # Ramp up sigmoid for spike-slab
+            if solver_args.prior_distribution == "concreteslab":
+                encoder.temp *= 0.9995
+                if encoder.temp <= solver_args.temp_min:
+                    encoder.temp = solver_args.temp_min
+            if solver_args.prior_method == "clf":
+                encoder.clf_temp *= 0.9995
+                if encoder.clf_temp <= solver_args.clf_temp_min:
+                    encoder.clf_temp = solver_args.clf_temp_min
+            if solver_args.prior_distribution == "concreteslab" or solver_args.prior_distribution == "laplacian":
+                if ((train_patches.shape[0] // train_args.batch_size)*j + i) >= 1500:
+                    encoder.warmup += 2e-4
+                    if encoder.warmup >= 1.0:
+                        encoder.warmup = 1.0
+
         # Test reconstructed or uncompressed dictionary on validation data-set
         epoch_true_recon = np.zeros(val_patches.shape[0] // train_args.batch_size)
         epoch_val_recon = np.zeros(val_patches.shape[0] // train_args.batch_size)
@@ -165,20 +180,6 @@ if __name__ == "__main__":
 
         # Decay step-size
         step_size = step_size * train_args.lr_decay
-
-        # Ramp up sigmoid for spike-slab
-        if solver_args.prior_distribution == "concreteslab":
-            encoder.temp *= 0.9
-            if encoder.temp <= solver_args.temp_min:
-                encoder.temp = solver_args.temp_min
-        if solver_args.prior_method == "clf":
-            encoder.clf_temp *= 0.9
-            if encoder.clf_temp <= solver_args.clf_temp_min:
-                encoder.clf_temp = solver_args.clf_temp_min
-        if solver_args.prior_distribution == "concreteslab" or solver_args.prior_distribution == "laplacian":
-            encoder.warmup += 2e-4
-            if encoder.warmup >= 1.0:
-                encoder.warmup = 1.0
 
         # Save and print data from epoch
         train_time[j] = time.time() - init_time
@@ -222,4 +223,4 @@ if __name__ == "__main__":
         logging.info("\n")
 
     if train_args.compute_stats:
-        compute_statistics(train_args.save_path, train_args.stat_im_count, train_args, solver_args)
+        compute_statistics(train_args.save_path, train_args, solver_args)

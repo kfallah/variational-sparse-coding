@@ -46,6 +46,11 @@ class VIEncoder(nn.Module):
             if self.solver_args.theshold_learn:
                 self.lambda_ = nn.Parameter(self.lambda_, requires_grad=True)
 
+    def ramp_hyperparams(self):
+        self.temp = 1e-2
+        self.clf_temp = 1e-2
+        self.warmup = 1.0
+
     def soft_threshold(self, z):
         if not self.solver_args.theshold_learn:
             self.lambda_ = torch.ones(z.shape[-1], device=z.device) * self.solver_args.threshold_lambda

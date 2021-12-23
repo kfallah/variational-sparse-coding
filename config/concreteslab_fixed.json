@@ -27,7 +27,6 @@
       "lambda_": 0.3,
       "debug": true,
       "true_coeff": false,
-      "gradient_variance": true,
       "iwae": false,
       "num_samples": 5,
       "threshold": false,
@@ -37,6 +36,7 @@
       "prior_method": "fixed",
       "spread_prior": 0.1,
       "spike_prior": 0.2,
+      "estimator": "gumbel",
       "temp_min": 0.005,
       "kl_weight": 0.01
     }
