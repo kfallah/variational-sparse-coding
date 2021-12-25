@@ -31,7 +31,8 @@ def compute_statistics(run_path, train_args, solver_args):
     solver_args.num_samples = 1
 
     final_phi = np.load(train_args.save_path + 'train_savefile.npz')['phi'][train_args.epochs - 1]
-    train_patches, val_patches = load_whitened_images(train_args, final_phi)
+    _, val_patches = load_whitened_images(train_args, final_phi)
+    val_patches = val_patches.reshape(-1, train_args.patch_size**2)
     default_device = torch.device('cuda', train_args.device)
 
     load_list = [int(re.search(r'epoch([0-9].*).pt', f)[1]) for f in os.listdir(run_path) if re.search(r'epoch([0-9].*).pt', f)]
@@ -40,7 +41,7 @@ def compute_statistics(run_path, train_args, solver_args):
     multi_info = np.zeros(len(load_list))
     posterior_collapse = np.zeros(len(load_list))
     coeff_collapse = np.zeros(len(load_list))
-    code_list = np.zeros((len(load_list), train_patches.shape[0], final_phi.shape[1]))
+    code_list = np.zeros((len(load_list), val_patches.shape[0], final_phi.shape[1]))
     recovered_dict = np.zeros((len(load_list), *final_phi.shape))
 
     for idx, method in enumerate(load_list):
@@ -60,8 +61,8 @@ def compute_statistics(run_path, train_args, solver_args):
 
         kl_collapse_count = np.zeros(final_phi.shape[1])
         coeff_collapse_count = np.zeros(final_phi.shape[1])
-        for i in range(train_patches.shape[0] // train_args.batch_size):
-            patches = train_patches[i * train_args.batch_size:(i + 1) * train_args.batch_size].T
+        for i in range(val_patches.shape[0] // train_args.batch_size):
+            patches = val_patches[i * train_args.batch_size:(i + 1) * train_args.batch_size].T
 
             if solver_args.solver == 'FISTA':
                 code_est = FISTA(phi, patches, tau=solver_args.lambda_).T
@@ -70,18 +71,17 @@ def compute_statistics(run_path, train_args, solver_args):
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(phi, device=default_device).float()
-
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
                     code_est = b_cu.detach().cpu().numpy()
 
             for k in range(phi.shape[1]):
-                kl_collapse_count[k] += (kl_loss[:, k] <= 1e-2).sum() / train_patches.shape[0]
-                coeff_collapse_count[k] += (np.abs(code_est[:, k]) <= 1e-2).sum() / train_patches.shape[0]
+                kl_collapse_count[k] += (kl_loss[:, k] <= 1e-2).sum() / val_patches.shape[0]
+                coeff_collapse_count[k] += (np.abs(code_est[:, k]) <= 1e-2).sum() / val_patches.shape[0]
             
             code_list[idx, i*train_args.batch_size:(i+1)*train_args.batch_size] = code_est
 
-        C_sr = (train_patches.T @ code_list[idx]) / len(train_patches)
-        C_rr = (code_list[idx].T @ code_list[idx]) / len(train_patches)
+        C_sr = (val_patches.T @ code_list[idx]) / len(val_patches)
+        C_rr = (code_list[idx].T @ code_list[idx]) / len(val_patches)
 
         posterior_collapse[idx] = 100. * (kl_collapse_count >= 0.95).sum() / phi.shape[1]
         coeff_collapse[idx] = 100. * (coeff_collapse_count >= 0.95).sum() / phi.shape[1]
