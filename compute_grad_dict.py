@@ -17,9 +17,9 @@ from utils.data_loader import load_whitened_images
 # %%
 # Coadapt baseline
 file_list = [
-    "prior_comp/FISTA_fnorm1e-4/",
-    "prior_comp/concreteslab_gradvar/",
-    "prior_comp/concreteslab_gumbel/",
+    #"prior_comp/FISTA_fnorm1e-4/",
+    #"prior_comp/concreteslab_gradvar/",
+    #"prior_comp/concreteslab_gumbel/",
     "prior_comp/concreteslab_raogumbel/",
     "prior_comp/gaussian_nothresh_iwae/",
     "prior_comp/gaussian_gradvar/",
@@ -28,9 +28,9 @@ file_list = [
 ]
 
 file_labels = [
-    "FISTA",
-    "CS GumbelSoftmax Estimator",
-    "CS StraightThrough Estimator",
+    #"FISTA",
+    #"CS GumbelSoftmax Estimator",
+    #"CS StraightThrough Estimator",
     "CS GumbelRao Estimator",
     "Gaussian",
     "Thresholded Gaussian",
@@ -108,7 +108,7 @@ for idx, train_run in enumerate(file_list):
                     b_cu = torch.tensor(b, device=default_device).float().T
                 elif solver_args.solver == "VI":
                     encoder.solver_args.iwae = True
-                    encoder.solver_args.num_samples = 1000
+                    encoder.solver_args.num_samples = 500
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
                 true_residual = (patches_cu - b_cu.detach() @ phi.T)
                 true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  121)
@@ -117,7 +117,7 @@ for idx, train_run in enumerate(file_list):
 
                 batch_var = []
                 batch_residual = []
-                for k in range(150):
+                for k in range(300):
                     if solver_args.solver == "FISTA":
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                         b_cu = torch.tensor(b, device=default_device).float().T
