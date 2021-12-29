@@ -3,6 +3,7 @@ import logging
 import numpy as np
 
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 from utils.solvers import FISTA, ADMM
@@ -155,13 +156,14 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
         z_thresh = encoder.soft_threshold(eps*scale)
         non_zero = torch.nonzero(z_thresh, as_tuple=True)  
         z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
-        z = z + (z_thresh - z).detach()
+        if solver_args.estimator == "straight":
+            z = z + (z_thresh - z).detach()
+        else:
+            z = z_thresh
 
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps*scale), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
-    #if solver_args.threshold:
-    #    z = encoder.soft_threshold(z)
-    recon_loss = F.mse_loss((z @ A.T), x, reduction='none')
+    recon_loss = compute_recon_loss(x, z, A)
     z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
                                      solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
 
@@ -181,23 +183,21 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
         z_thresh = encoder.soft_threshold(eps * encoder.warmup)
         non_zero = torch.nonzero(z_thresh, as_tuple=True)  
         z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
-        z = z + (z_thresh - z).detach()
+        if solver_args.estimator == "straight":
+            z = z + (z_thresh - z).detach()
+        else:
+            z = z_thresh
+    
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
-    recon_loss = F.mse_loss((z @ A.T), x, reduction='none')
+    recon_loss = compute_recon_loss(x, z, A)
     z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
                                      solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
-
-    #logging.info(f"dict: {A.norm(dim=-1).mean():.3E} scale: {scale.norm(dim=-1).mean():.3E}, shift: {shift.norm(dim=-1).mean():.3E}")
-    #logging.info(f"logscale: {logscale.norm(dim=-1).mean():.3E}, z_norm: {z.norm(dim=-1).median():.3E}, recon: {recon_loss.mean():.3E}, kl: {kl_loss.mean():.3E}")
 
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
 
 def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, temp=0.1, spike_prior=0.2, idx=None):
     # From first submission of (Tonolini et al 2020) without pseudo-inputs
-    # The difference with the spike-slab is the use of the parameterization from the Concrete distribution paper
-    # These seem to be the exact same, but this parameterization approach lets us compare to the hyper-parameters
-    # Used in the concrete distribution
 
     # Repeat based on the number of samples
     x = x.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
@@ -229,13 +229,20 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     kl_loss = compute_kl(solver_args, x=x, z=z, encoder=encoder, logscale=logscale,
                          shift=shift, logspike=logspike, spike=spike, 
                          spike_prior=spike_prior, idx=idx)
-    if solver_args.threshold:
-        z = encoder.soft_threshold(z)
-    recon_loss = F.mse_loss((z @ A.T), x, reduction='none')
+    recon_loss = compute_recon_loss(x, z, A)
     z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
                                      solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
 
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
+
+def compute_recon_loss(x, z, A):
+    if type(A) is nn.Module:
+        x_hat = A(z)
+    else:
+        x_hat = (z @ A.T)
+    recon_loss = F.mse_loss(x_hat, x, reduction='none')
+
+    return recon_loss
 
 def compute_iwae_loss(z, recon_loss, kl_loss, iwae=False):
     if iwae:

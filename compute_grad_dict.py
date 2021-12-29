@@ -18,25 +18,25 @@ from utils.data_loader import load_whitened_images
 # %%
 # Coadapt baseline
 file_list = [
-    "prior_comp/FISTA_fnorm1e-4/",
-    "results/concreteslab_gs_iwae/",
-    "results/concreteslab_st_iwae/",
-    "results/concreteslab_gr_iwae/",
+    #"prior_comp/FISTA_fnorm1e-4/",
+    #"results/concreteslab_gs_iwae/",
+    #"results/concreteslab_st_iwae/",
+    #"results/concreteslab_gr_iwae/",
     "results/gaussian_iwae/",
-    "results/gaussian_thresh_iwae/",
-    "results/laplacian_iwae/",
-    "results/laplacian_thresh_iwae/",
+    #"results/gaussian_thresh_iwae/",
+    #"results/laplacian_iwae/",
+    #"results/laplacian_thresh_iwae/",
 ]
 
 file_labels = [
-    "FISTA",
-    "CS GumbelSoftmax Estimator",
-    "CS StraightThrough Estimator",
-    "CS GumbelRao Estimator",
+    #"FISTA",
+    #"CS GumbelSoftmax Estimator",
+    #"CS StraightThrough Estimator",
+    #"CS GumbelRao Estimator",
     "Gaussian",
-    "Thresholded Gaussian",
-    "Laplacian",
-    "Thresholded Laplacian"
+    #"Thresholded Gaussian",
+    #"Laplacian",
+    #"Thresholded Laplacian"
 ]
 
 base_lambda = 4.0
@@ -129,7 +129,7 @@ for idx, train_run in enumerate(file_list):
                 batch_var = []
                 batch_residual = []
                 image_est = []
-                for k in range(1):
+                for k in range(50):
                     if solver_args.solver == "FISTA":
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                         b_cu = torch.tensor(b, device=default_device).float().T
@@ -149,17 +149,16 @@ for idx, train_run in enumerate(file_list):
                 batch_residual = torch.stack(batch_residual)
                 image_est = torch.stack(image_est)
 
-                grad_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_grad - torch.mean(batch_var, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
+                grad_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_grad - torch.mean(batch_var, dim=0)).mean()  / (val_patches.shape[0] // train_args.batch_size)
                 grad_var[file_labels[idx]][epoch] += torch.var(batch_var, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
-                residual_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_residual - torch.mean(batch_residual, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
+                residual_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_residual - torch.mean(batch_residual, dim=0)).mean() / (val_patches.shape[0] // train_args.batch_size)
                 residual_var[file_labels[idx]][epoch] += torch.var(batch_residual, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
-                image_bias[file_labels[idx]][epoch] += torch.linalg.norm(patches - torch.mean(image_est, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
+                image_bias[file_labels[idx]][epoch] += torch.linalg.norm(patches_cu.detach().cpu() - torch.mean(image_est, dim=0), axis=1).mean() / (val_patches.shape[0] // train_args.batch_size)
                 image_var[file_labels[idx]][epoch] += torch.var(image_est, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
 
             logging.info(f"Epoch {epoch}, grad bias: {grad_bias[file_labels[idx]][epoch]:.3E}, grad var: {grad_var[file_labels[idx]][epoch]:.3E}, " + \
                          f"residual bias: {residual_bias[file_labels[idx]][epoch]:.3E}, residual var: {residual_var[file_labels[idx]][epoch]:.3E}, " + \
-                         f"image bias: {image_bias[file_labels[idx]][epoch]:.3E}, image var: {image_var[file_labels[idx]][epoch]:.3E})
-)
+                         f"image bias: {image_bias[file_labels[idx]][epoch]:.3E}, image var: {image_var[file_labels[idx]][epoch]:.3E}")
     logging.info("\n")
 
 np.savez_compressed(f"figures/grad_stats/dictgrad_{file_suffix}_save.npz",

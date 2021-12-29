@@ -56,24 +56,24 @@ class VIEncoder(nn.Module):
             self.lambda_ = torch.ones(z.shape[-1], device=z.device) * self.solver_args.threshold_lambda
         return F.relu(torch.abs(z) - torch.abs(self.lambda_)) * torch.sign(z)
 
-    def forward(self, x, A, idx=None):
+    def forward(self, x, decoder, idx=None):
         feat = self.enc(x)
         b_logscale = self.scale(feat)
         b_shift = self.shift(feat)
 
         if self.solver_args.prior_distribution == "laplacian":
-            iwae_loss, recon_loss, kl_loss, b = sample_laplacian(b_shift, b_logscale, x, A,
+            iwae_loss, recon_loss, kl_loss, sparse_code = sample_laplacian(b_shift, b_logscale, x, decoder,
                                                                  self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "gaussian":
-            iwae_loss, recon_loss, kl_loss, b  = sample_gaussian(b_shift, b_logscale, x, A,
+            iwae_loss, recon_loss, kl_loss, sparse_code  = sample_gaussian(b_shift, b_logscale, x, decoder,
                                                                  self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "concreteslab":
             logspike = -F.relu(-self.spike(feat))
-            iwae_loss, recon_loss, kl_loss, b = sample_concreteslab(b_shift, b_logscale, logspike, x, A, 
+            iwae_loss, recon_loss, kl_loss, sparse_code = sample_concreteslab(b_shift, b_logscale, logspike, x, decoder, 
                                                                     self, self.solver_args, 
                                                                     self.temp, self.solver_args.spike_prior,
                                                                     idx=idx)       
         else:
             raise NotImplementedError
         
-        return iwae_loss, recon_loss, kl_loss, b
+        return iwae_loss, recon_loss, kl_loss, sparse_code
