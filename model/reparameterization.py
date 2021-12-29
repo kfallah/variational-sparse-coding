@@ -157,7 +157,7 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
         z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
         z = z + (z_thresh - z).detach()
 
-    kl_loss = compute_kl(solver_args, x=x, A=A, z=(shift + eps*scale), encoder=encoder, 
+    kl_loss = compute_kl(solver_args, x=x, z=(shift + eps*scale), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     #if solver_args.threshold:
     #    z = encoder.soft_threshold(z)
@@ -173,17 +173,15 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
     logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
 
-    scale = torch.exp(logscale) * encoder.warmup
+    scale = torch.exp(logscale)
     u = torch.rand_like(logscale) - 0.5
     eps = -scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-6)) 
-    z=(shift + eps)
+    z = shift + eps * encoder.warmup
     if solver_args.threshold:
-        z_thresh = encoder.soft_threshold(eps)
+        z_thresh = encoder.soft_threshold(eps * encoder.warmup)
         non_zero = torch.nonzero(z_thresh, as_tuple=True)  
         z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
         z = z + (z_thresh - z).detach()
-    else:
-        z = shift + eps
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = F.mse_loss((z @ A.T), x, reduction='none')
@@ -208,9 +206,9 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     logspike = logspike.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
     spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
 
-    std = torch.exp(0.5*logscale)
+    std = encoder.warmup * torch.exp(0.5*logscale) + np.sqrt(1 - encoder.warmup)
     eps = torch.randn_like(std)
-    gaussian = eps.mul(std).add_(shift)
+    gaussian = eps.mul(std) + (encoder.warmup * shift)
 
     eta = torch.rand_like(std)
     u = torch.log(eta) - torch.log(1 - eta)

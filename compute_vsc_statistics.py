@@ -85,7 +85,13 @@ def compute_statistics(run_path, train_args, solver_args):
 
         posterior_collapse[idx] = 100. * (kl_collapse_count >= 0.95).sum() / phi.shape[1]
         coeff_collapse[idx] = 100. * (coeff_collapse_count >= 0.95).sum() / phi.shape[1]
-        multi_info[idx] = drv.information_multi(code_list[idx].T)
+
+        bins = np.linspace(-2, 2, 20)
+        bins = np.sort(np.append(bins, [-1e-50, 1e-50]))
+        alphabet = np.tile(np.arange(len(bins)+1), (code_list[idx].shape[1], 1))   
+        discrete_codes = np.digitize(code_list[idx].T, bins)
+        multi_info[idx] = drv.information_multi(discrete_codes, Alphabet_X=alphabet)
+
         recovered_dict[idx] = C_sr @ np.linalg.pinv(C_rr)
         show_dict(C_sr @ np.linalg.pinv(C_rr), train_args.save_path + f"recovered_dict{method}.png")
 
