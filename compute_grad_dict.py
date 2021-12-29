@@ -1,5 +1,6 @@
 # %%
 import json
+import logging
 import os
 import re
 from types import SimpleNamespace
@@ -17,20 +18,20 @@ from utils.data_loader import load_whitened_images
 # %%
 # Coadapt baseline
 file_list = [
-    #"prior_comp/FISTA_fnorm1e-4/",
-    #"prior_comp/concreteslab_gradvar/",
-    #"prior_comp/concreteslab_gumbel/",
-    "prior_comp/concreteslab_raogumbel/",
-    "prior_comp/gaussian_nothresh_iwae/",
-    "prior_comp/gaussian_gradvar/",
-    "prior_comp/laplacian_fixed_iwae/",
-    "prior_comp/laplacian_thresh_iwae/",
+    "prior_comp/FISTA_fnorm1e-4/",
+    "results/concreteslab_gs_iwae/",
+    "results/concreteslab_st_iwae/",
+    "results/concreteslab_gr_iwae/",
+    "results/gaussian_iwae/",
+    "results/gaussian_thresh_iwae/",
+    "results/laplacian_iwae/",
+    "results/laplacian_thresh_iwae/",
 ]
 
 file_labels = [
-    #"FISTA",
-    #"CS GumbelSoftmax Estimator",
-    #"CS StraightThrough Estimator",
+    "FISTA",
+    "CS GumbelSoftmax Estimator",
+    "CS StraightThrough Estimator",
     "CS GumbelRao Estimator",
     "Gaussian",
     "Thresholded Gaussian",
@@ -39,15 +40,18 @@ file_labels = [
 ]
 
 base_lambda = 4.0
+file_suffix = "1samp"
 
 # %%
 #with open(base_run + "config.json") as json_data:
 with open(file_list[0] + 'config.json') as json_data:
     config_data = json.load(json_data)
+logging.basicConfig(filename=f"figures/grad_stats/dictgrad_{file_suffix}.txt", 
+                    filemode='w', level=logging.DEBUG)
 train_args = SimpleNamespace(**config_data['train'])
 gt_dictionary = np.load(file_list[0] + 'train_savefile.npz')['phi'][-1]
 
-default_device = torch.device('cuda:0')
+default_device = torch.device('cuda')
 _, val_patches = load_whitened_images(train_args, gt_dictionary)
 p_signal = np.var(val_patches.reshape(len(val_patches), -1), axis=-1).mean()
 
@@ -58,12 +62,17 @@ grad_var = {}
 residual_bias = {}
 residual_var = {}
 
+image_bias = {}
+image_var = {}
+
 for idx, train_run in enumerate(file_list):
-    print(f"Method {file_labels[idx]}")
+    logging.info(f"Method {file_labels[idx]}")
     grad_bias[file_labels[idx]] = {}
     grad_var[file_labels[idx]] = {}
     residual_bias[file_labels[idx]] = {}
     residual_var[file_labels[idx]] = {}
+    image_bias[file_labels[idx]] = {}
+    image_var[file_labels[idx]] = {}
 
     with open(train_run + 'config.json') as json_data:
         config_data = json.load(json_data)
@@ -82,6 +91,8 @@ for idx, train_run in enumerate(file_list):
             grad_var[file_labels[idx]][epoch] = 0
             residual_bias[file_labels[idx]][epoch] = 0
             residual_var[file_labels[idx]][epoch] = 0
+            image_bias[file_labels[idx]][epoch] = 0
+            image_var[file_labels[idx]][epoch] = 0
 
             np.random.seed(train_args.seed)
             torch.manual_seed(train_args.seed)
@@ -108,7 +119,7 @@ for idx, train_run in enumerate(file_list):
                     b_cu = torch.tensor(b, device=default_device).float().T
                 elif solver_args.solver == "VI":
                     encoder.solver_args.iwae = True
-                    encoder.solver_args.num_samples = 500
+                    encoder.solver_args.num_samples = 1000
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
                 true_residual = (patches_cu - b_cu.detach() @ phi.T)
                 true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  121)
@@ -117,37 +128,45 @@ for idx, train_run in enumerate(file_list):
 
                 batch_var = []
                 batch_residual = []
-                for k in range(300):
+                image_est = []
+                for k in range(1):
                     if solver_args.solver == "FISTA":
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                         b_cu = torch.tensor(b, device=default_device).float().T
                     elif solver_args.solver == "VI":
                         encoder.solver_args.iwae = False
-                        encoder.solver_args.num_samples = 20
+                        encoder.solver_args.num_samples = 1
                         iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
-
-                    residual = (patches_cu - b_cu.detach() @ phi.T)
+                    
+                    x_hat = b_cu.detach() @ phi.T
+                    residual = (patches_cu - x_hat)
                     model_grad = (b_cu.detach()[..., None] * residual[:, None] / (-0.5 *  121)).detach().cpu()
                     batch_var.append(model_grad)
                     batch_residual.append(residual.detach().cpu())
+                    image_est.append(x_hat.detach().cpu())
 
                 batch_var = torch.stack(batch_var)
                 batch_residual = torch.stack(batch_residual)
+                image_est = torch.stack(image_est)
 
                 grad_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_grad - torch.mean(batch_var, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
                 grad_var[file_labels[idx]][epoch] += torch.var(batch_var, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
                 residual_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_residual - torch.mean(batch_residual, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
                 residual_var[file_labels[idx]][epoch] += torch.var(batch_residual, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
+                image_bias[file_labels[idx]][epoch] += torch.linalg.norm(patches - torch.mean(image_est, dim=0)) / (val_patches.shape[0] // train_args.batch_size)
+                image_var[file_labels[idx]][epoch] += torch.var(image_est, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
 
-            print(f"Epoch {epoch}, grad bias: {grad_bias[file_labels[idx]][epoch]:.3E}, grad var: {grad_var[file_labels[idx]][epoch]:.3E}, " + \
-                  f"residual bias: {residual_bias[file_labels[idx]][epoch]:.3E}, residual var: {residual_var[file_labels[idx]][epoch]:.3E}")
-    print()
+            logging.info(f"Epoch {epoch}, grad bias: {grad_bias[file_labels[idx]][epoch]:.3E}, grad var: {grad_var[file_labels[idx]][epoch]:.3E}, " + \
+                         f"residual bias: {residual_bias[file_labels[idx]][epoch]:.3E}, residual var: {residual_var[file_labels[idx]][epoch]:.3E}, " + \
+                         f"image bias: {image_bias[file_labels[idx]][epoch]:.3E}, image var: {image_var[file_labels[idx]][epoch]:.3E})
+)
+    logging.info("\n")
 
-np.savez_compressed("figures/grad_stats/dictgrad_20samp_save.npz",
+np.savez_compressed(f"figures/grad_stats/dictgrad_{file_suffix}_save.npz",
         grad_bias=grad_bias, grad_var=grad_var, 
         residual_bias=grad_bias, residual_var=grad_var, 
+        image_bias=image_bias, image_var=image_var, 
         file_list=file_list, file_labels=file_labels)
-
 
 # %%
 fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 8))
@@ -173,7 +192,7 @@ ax[1].set_title("Variance of Dictionary Gradient", fontsize=14)
 ax[1].set_xlabel("Epoch", fontsize=14)
 ax[1].set_ylabel("Log Variance", fontsize=14)
 
-plt.savefig("figures/grad_stats/dictgrad_20samp.png", bbox_inches='tight')
+plt.savefig(f"figures/grad_stats/dictgrad_{file_suffix}.png", bbox_inches='tight')
 plt.close()
 
 # %%
@@ -200,5 +219,32 @@ ax[1].set_title("Variance of Residuals", fontsize=14)
 ax[1].set_xlabel("Epoch", fontsize=14)
 ax[1].set_ylabel("Log Variance", fontsize=14)
 
-plt.savefig("figures/grad_stats/dictresidual_20samp.png", bbox_inches='tight')
+plt.savefig(f"figures/grad_stats/dictresidual_{file_suffix}.png", bbox_inches='tight')
+plt.close()
+
+# %%
+fig, ax = plt.subplots(nrows=1, ncols=2, figsize=(14, 8))
+
+for idx, label in enumerate(file_labels):
+    grad_list = sorted(image_bias[label].items())
+    x_grad, grad_plt = zip(*grad_list)
+    grad_plt = [grad.detach().cpu().numpy() for grad in grad_plt]
+    ax[0].semilogy(x_grad, grad_plt, linewidth=4, label=label)
+
+    grad_list = sorted(image_var[label].items())
+    x_grad, grad_plt = zip(*grad_list)
+    grad_plt = [grad.detach().cpu().numpy() for grad in grad_plt]
+    ax[1].semilogy(x_grad, grad_plt, linewidth=4, label=label)
+
+ax[0].legend(fontsize=14)
+ax[0].set_title("Bias of Patch Estimates", fontsize=14)
+ax[0].set_xlabel("Epoch", fontsize=14)
+ax[0].set_ylabel("Log Bias", fontsize=14)
+
+ax[1].legend(fontsize=14)
+ax[1].set_title("Variance of Patch Estimates", fontsize=14)
+ax[1].set_xlabel("Epoch", fontsize=14)
+ax[1].set_ylabel("Log Variance", fontsize=14)
+
+plt.savefig(f"figures/grad_stats/image_{file_suffix}.png", bbox_inches='tight')
 plt.close()
