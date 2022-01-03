@@ -19,13 +19,15 @@ from utils.data_loader import load_whitened_images
 # Coadapt baseline
 file_list = [
     #"prior_comp/FISTA_fnorm1e-4/",
-    #"results/concreteslab_gs_iwae/",
-    #"results/concreteslab_st_iwae/",
-    #"results/concreteslab_gr_iwae/",
-    "results/gaussian_iwae/",
-    #"results/gaussian_thresh_iwae/",
-    #"results/laplacian_iwae/",
-    #"results/laplacian_thresh_iwae/",
+    #"comp256/concreteslab_gs_iwae2/",
+    #"comp256/concreteslab_st_iwae2/",
+    #"comp256/concreteslab_gr_iwae2/",
+    "comp256/gaussian_iwae/",
+    "comp256/gaussian_thresh_st_iwae/",
+    "comp256/gaussian_thresh_iwae/",
+    #"comp256/laplacian_iwae/",
+    #"comp256/laplacian_thresh_st_iwae/",
+    #"comp256/laplacian_thresh_iwae/",
 ]
 
 file_labels = [
@@ -34,13 +36,15 @@ file_labels = [
     #"CS StraightThrough Estimator",
     #"CS GumbelRao Estimator",
     "Gaussian",
-    #"Thresholded Gaussian",
+    "Thresholded Gaussian SG",
+    "Thresholded Gaussian",
     #"Laplacian",
+    #"Thresholded Laplacian SG",
     #"Thresholded Laplacian"
 ]
 
-base_lambda = 4.0
-file_suffix = "1samp"
+base_lambda = 8.0
+file_suffix = "1samp_gaus"
 
 # %%
 #with open(base_run + "config.json") as json_data:
@@ -99,7 +103,7 @@ for idx, train_run in enumerate(file_list):
             
             if solver_args.solver != "FISTA":
                 encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
-                encoder.load_state_dict(torch.load(train_run + f"encoderstate_epoch{epoch}.pt")['model_state'])
+                encoder.load_state_dict(torch.load(train_run + f"encoderstate_epoch{epoch}.pt", map_location=default_device)['model_state'])
                 encoder.ramp_hyperparams()
 
             if epoch == 0:
@@ -119,17 +123,17 @@ for idx, train_run in enumerate(file_list):
                     b_cu = torch.tensor(b, device=default_device).float().T
                 elif solver_args.solver == "VI":
                     encoder.solver_args.iwae = True
-                    encoder.solver_args.num_samples = 1000
+                    encoder.solver_args.num_samples = 500
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
                 true_residual = (patches_cu - b_cu.detach() @ phi.T)
-                true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  121)
+                true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  256)
                 true_grad = true_grad.detach().cpu()
                 true_residual = true_residual.detach().cpu()
 
                 batch_var = []
                 batch_residual = []
                 image_est = []
-                for k in range(50):
+                for k in range(300):
                     if solver_args.solver == "FISTA":
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                         b_cu = torch.tensor(b, device=default_device).float().T
@@ -140,7 +144,7 @@ for idx, train_run in enumerate(file_list):
                     
                     x_hat = b_cu.detach() @ phi.T
                     residual = (patches_cu - x_hat)
-                    model_grad = (b_cu.detach()[..., None] * residual[:, None] / (-0.5 *  121)).detach().cpu()
+                    model_grad = (b_cu.detach()[..., None] * residual[:, None] / (-0.5 *  256)).detach().cpu()
                     batch_var.append(model_grad)
                     batch_residual.append(residual.detach().cpu())
                     image_est.append(x_hat.detach().cpu())

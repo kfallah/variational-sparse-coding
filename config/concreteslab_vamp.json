@@ -11,15 +11,14 @@
         "batch_size": 100,
         "dict_size": 225,
         "patch_size": 11,
-        "epochs": 200,
-        "save_freq": 1,
-        "save_path": "results/concreteslab_vamp2/",
+        "epochs": 300,
+        "save_freq": 20,
+        "save_path": "prior_method/concreteslab_vamp_1samp/",
         "normalize": false,
-        "fnorm_reg": 1e-3,
-        "lr": 0.02,
-        "lr_decay": 0.98,
-        "compute_stats": true,
-        "stat_im_count": 40000
+        "fnorm_reg": 1e-4,
+        "lr": 0.5,
+        "lr_decay": 0.99,
+        "compute_stats": true
     },
     "solver":
     {
@@ -29,7 +28,6 @@
         "lambda_": 1e-1,
         "debug": true,
         "true_coeff": false,
-        "gradient_variance": false,
         "iwae": false,
         "num_samples": 1,
         "threshold": false,
@@ -37,11 +35,11 @@
         "theshold_learn": false,
         "prior_distribution": "concreteslab",
         "prior_method": "vamp",
-        "num_pseudo_inputs": 500,
+        "num_pseudo_inputs": 100,
         "spread_prior": 1e0,
         "spike_prior": 0.2,
         "estimator": "gumbel",
-        "temp_min": 4e-1,
+        "temp_min": 1e-2,
         "kl_weight": 1e-2
     }
 }

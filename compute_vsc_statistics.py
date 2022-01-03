@@ -34,12 +34,11 @@ def compute_statistics(run_path, train_args, solver_args):
     _, val_patches = load_whitened_images(train_args, final_phi)
     val_patches = val_patches.reshape(-1, train_args.patch_size**2)
     default_device = torch.device('cuda', train_args.device)
-    
     if solver_args.solver != 'FISTA':
         load_list = [int(re.search(r'epoch([0-9].*).pt', f)[1]) for f in os.listdir(run_path) if re.search(r'epoch([0-9].*).pt', f)]
         load_list = np.sort(load_list)
     else:
-        load_list = np.arange(0, 201, 20)
+        load_list = np.arange(0, 301, 20)
 
     multi_info = np.zeros(len(load_list))
     posterior_collapse = np.zeros(len(load_list))
@@ -116,5 +115,5 @@ if __name__ == "__main__":
     train_args = SimpleNamespace(**config_data['train'])
     solver_args = SimpleNamespace(**config_data['solver'])
     logging.basicConfig(filename=os.path.join(train_args.save_path, 'statistics.log'), 
-                    filemode='w', level=logging.DEBUG)
+                        filemode='w', level=logging.DEBUG)
     compute_statistics(args.run, train_args, solver_args)
