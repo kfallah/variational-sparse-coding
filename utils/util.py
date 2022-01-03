@@ -2,7 +2,9 @@ import logging
 
 import numpy as np
 import torch
+
 from sklearn_extra.cluster import KMedoids
+
 
 def print_debug(train_args, b_true, b_hat):
     total_nz = np.count_nonzero(b_hat, axis=1)

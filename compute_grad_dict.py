@@ -167,7 +167,7 @@ for idx, train_run in enumerate(file_list):
 
 np.savez_compressed(f"figures/grad_stats/dictgrad_{file_suffix}_save.npz",
         grad_bias=grad_bias, grad_var=grad_var, 
-        residual_bias=grad_bias, residual_var=grad_var, 
+        residual_bias=residual_bias, residual_var=residual_var, 
         image_bias=image_bias, image_var=image_var, 
         file_list=file_list, file_labels=file_labels)
 

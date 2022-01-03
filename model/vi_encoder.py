@@ -22,8 +22,12 @@ class VIEncoder(nn.Module):
                             MLPEncoder(img_size),
                             nn.Linear((img_size**2), self.solver_args.num_pseudo_inputs)
                         )
+        elif self.solver_args.feature_enc == "conv":
+            self.enc = MLPEncoder(img_size)
+
         else:
             raise NotImplementedError
+
         self.scale = nn.Linear((img_size**2), dict_size)
         self.shift = nn.Linear((img_size**2), dict_size)
 

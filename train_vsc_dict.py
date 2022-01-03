@@ -77,6 +77,7 @@ if __name__ == "__main__":
 
     # Initialize empty arrays for tracking learning data
     dictionary_saved = np.zeros((train_args.epochs, *dictionary.shape))
+    dictionary_use = np.zeros((train_args.epochs, train_args.dict_size))
     lambda_list = np.zeros((train_args.epochs, train_args.dict_size))
     coeff_true = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
     coeff_est = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
@@ -126,8 +127,12 @@ if __name__ == "__main__":
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
             if train_args.normalize:
                 dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
+
             # Calculate loss after gradient step
             epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b) ** 2) + solver_args.lambda_ * np.sum(np.abs(b))
+            # Log which dictionary entries are used
+            dict_use = np.count_nonzero(b, axis=1)
+            dictionary_use[j] += dict_use / ((train_patches.shape[0] // train_args.batch_size))
 
             # Ramp up sigmoid for spike-slab
             if solver_args.prior_distribution == "concreteslab":
@@ -210,7 +215,8 @@ if __name__ == "__main__":
                     phi=dictionary_saved, lambda_list=lambda_list, time=train_time,
                     train=train_loss, val_true_recon=val_true_recon, val_recon=val_recon, 
                     val_l1=val_l1, val_true_l1=val_true_l1, val_iwae_loss=val_iwae_loss,
-                    val_kl_loss=val_kl_loss, coeff_est=coeff_est, coeff_true=coeff_true)
+                    val_kl_loss=val_kl_loss, coeff_est=coeff_est, coeff_true=coeff_true,
+                    dictionary_use=dictionary_use)
             if solver_args.solver == "VI":
                 torch.save({
                             'model_state': encoder.state_dict()
