@@ -2,9 +2,9 @@
 Train sparse dictionary model (Olshausen 1997) with whitened images used in the original paper. This script
 applies a variational posterior to learn the sparse codes.
 
-@Filename    train_sparse_dict
+@Filename    train_vsc_dict.py
 @Author      Kion
-@Created     5/29/20
+@Created     11/01/21
 """
 import argparse
 import time
@@ -195,7 +195,7 @@ if __name__ == "__main__":
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         coeff_est[j], coeff_true[j] = b_hat.T, b_true.T
         if solver_args.threshold and solver_args.solver == "VI":
-            lambda_list[j] = encoder.lambda_.data.cpu().numpy()
+            lambda_list[j] = encoder.lambda_.data.mean(dim=0).cpu().numpy()
         else:
             lambda_list[j] = np.ones(train_args.dict_size) * -1
         dictionary_saved[j] = dictionary

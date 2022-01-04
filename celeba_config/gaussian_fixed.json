@@ -1,0 +1,32 @@
+{
+    "train": {
+      "device": [1],
+      "amp": false,
+      "seed": 0,
+      "train_samples": 100000,
+      "batch_size": 100,
+      "dict_size": 225,
+      "epochs": 200,
+      "save_freq": 20,
+      "save_path": "results_celeba/gaussian_kl1e-3/",
+      "lr": 1e-3,
+      "weight_decay": 1e-4
+    },
+    "solver": {
+      "solver": "VI",
+      "feature_enc": "CONV",
+      "lambda_": 0.25,
+      "debug": true,
+      "true_coeff": false,
+      "iwae": false,
+      "num_samples": 1,
+      "threshold": false,
+      "threshold_lambda": 0.25,
+      "theshold_learn": false,
+      "prior_distribution": "gaussian",
+      "estimator": "subgradient",
+      "prior_method": "fixed",
+      "spread_prior": 0.1,
+      "kl_weight": 0.001
+    }
+  }

@@ -11,15 +11,20 @@ from model.util import gumbel_rao_argmax
 
 def compute_kl(solver_args, **kwargs):
     if solver_args.prior_method == "fixed":
-        return fixed_kl(solver_args, **kwargs)
+        kl_loss = fixed_kl(solver_args, **kwargs)
     elif solver_args.prior_method == "vamp":
-        return vamp_kl(solver_args, **kwargs)
+        kl_loss = vamp_kl(solver_args, **kwargs)
     elif solver_args.prior_method == "clf":
-        return clf_kl(solver_args, **kwargs)
+        kl_loss = clf_kl(solver_args, **kwargs)
     elif solver_args.prior_method == "coreset":
-        return coreset_kl(solver_args, **kwargs)
+        kl_loss = coreset_kl(solver_args, **kwargs)
     else:
         raise NotImplementedError
+
+    if solver_args.threshold and solver_args.theshold_learn:
+        kl_loss += kwargs['encoder'].lambda_kl_loss.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+
+    return kl_loss
 
 def fixed_kl(solver_args, **params):
     # One way to combat posterior collapse is to reduce the prior spread
@@ -141,12 +146,11 @@ def coreset_kl(solver_args, **params):
 
     return kl_loss
 
-# TODO: need to fix sampling in case of convolutional architecture
 def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
     # Repeat based on the number of samples
-    x = x.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+    x = x.repeat(solver_args.num_samples, *torch.ones(x.dim(), dtype=int)).transpose(1, 0)
+    shift = shift.repeat(solver_args.num_samples, *torch.ones(shift.dim(), dtype=int)).transpose(1, 0)
+    logscale = logscale.repeat(solver_args.num_samples, *torch.ones(logscale.dim(), dtype=int)).transpose(1, 0)
 
     scale = torch.exp(0.5*logscale)
     eps = torch.randn_like(scale)
@@ -171,9 +175,9 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
 
 def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     # Repeat based on the number of samples
-    x = x.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+    x = x.repeat(solver_args.num_samples, *torch.ones(x.dim(), dtype=int)).transpose(1, 0)
+    shift = shift.repeat(solver_args.num_samples, *torch.ones(shift.dim(), dtype=int)).transpose(1, 0)
+    logscale = logscale.repeat(solver_args.num_samples, *torch.ones(logscale.dim(), dtype=int)).transpose(1, 0)
 
     scale = torch.exp(logscale)
     u = torch.rand_like(logscale) - 0.5
@@ -236,11 +240,11 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
 
 def compute_recon_loss(x, z, A):
-    if type(A) is nn.Module:
+    if issubclass(type(A), nn.Module):
         x_hat = A(z)
     else:
         x_hat = (z @ A.T)
-    recon_loss = F.mse_loss(x_hat, x, reduction='none')
+    recon_loss = F.mse_loss(x_hat, x, reduction='none').reshape(len(x), x.shape[1], -1)
 
     return recon_loss
 

@@ -4,4 +4,7 @@ baseline
 *.txt
 figures
 *__pycache__*
-data/*.np
+data
+.vscode
+*.ipynb
+.ipynb_checkpoints

@@ -1,9 +1,38 @@
 import os
 import logging
 
+import torch
+import torchvision
+import torchvision.transforms as transforms
+
 import numpy as np
 import scipy.io
 from sklearn.feature_extraction.image import extract_patches_2d
+
+def load_celeba(path, train_args):
+    train_data = torchvision.datasets.CelebA(path, split='train', target_type = 'attr',
+                                    download=False,
+                                    transform=transforms.Compose([    
+                                        transforms.CenterCrop(140),
+                                        transforms.Resize(64),
+                                        transforms.ToTensor(),
+                                    ]))
+    train_data = torch.utils.data.Subset(train_data, torch.arange(train_args.train_samples))
+    
+    test_data = torchvision.datasets.CelebA(path, split='test', target_type = 'attr',
+                                        download=False,
+                                        transform=transforms.Compose([
+                                        transforms.CenterCrop(140),
+                                        transforms.Resize(64),
+                                        transforms.ToTensor(),
+                                    ]))
+
+    train_loader = torch.utils.data.DataLoader(train_data, batch_size=train_args.batch_size,
+                                               shuffle=True, num_workers=8)
+    test_loader = torch.utils.data.DataLoader(test_data, batch_size=train_args.batch_size,
+                                              shuffle=False, num_workers=8, drop_last=True)
+    logging.info(f"Dataset loaded with {len(train_data)} training and {len(test_data)} test images")
+    return train_loader, test_loader
 
 def load_whitened_images(train_args, dictionary):
 
