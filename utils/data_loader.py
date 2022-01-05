@@ -13,6 +13,7 @@ def load_celeba(path, train_args):
     train_data = torchvision.datasets.CelebA(path, split='train', target_type = 'attr',
                                     download=False,
                                     transform=transforms.Compose([    
+                                        transforms.RandomHorizontalFlip(),
                                         transforms.CenterCrop(140),
                                         transforms.Resize(64),
                                         transforms.ToTensor(),

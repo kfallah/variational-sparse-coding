@@ -5,6 +5,7 @@ sys.path.append('.')
 import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision.models as models
 from torch.distributions import gamma as gamma
 
 from model.reparameterization import *
@@ -19,33 +20,37 @@ class VIEncoder(nn.Module):
         self.dict_size = dict_size
 
         if self.solver_args.feature_enc == "MLP":
-            self.enc = MLPEncoder(img_size)
+            self.enc = MLPEncoder(int(np.sqrt(img_size)))
             if self.solver_args.prior_method == "clf":
                 self.clf = nn.Sequential(
-                            MLPEncoder(img_size),
-                            nn.Linear((img_size**2), self.solver_args.num_pseudo_inputs)
+                            MLPEncoder(int(np.sqrt(img_size))),
+                            nn.Linear(img_size, self.solver_args.num_pseudo_inputs)
                         )
         elif self.solver_args.feature_enc == "CONV":
-            self.enc = ConvEncoder((img_size**2), 3)
-
+            img_size = 256
+            self.enc = ConvEncoder(img_size, 3)
+        elif self.solver_args.feature_enc == "RES":
+            self.enc = models.resnet18()
+            self.enc.fc = nn.Identity()
+            img_size = 512
         else:
             raise NotImplementedError
 
-        self.scale = nn.Linear((img_size**2), dict_size)
-        self.shift = nn.Linear((img_size**2), dict_size)
+        self.scale = nn.Linear(img_size, dict_size)
+        self.shift = nn.Linear(img_size, dict_size)
 
         if self.solver_args.prior_distribution == "concreteslab":
-            self.spike = nn.Linear((img_size**2), dict_size)
+            self.spike = nn.Linear(img_size, dict_size)
             self.temp = 1.0
             self.warmup = 0.0
         if self.solver_args.threshold and self.solver_args.theshold_learn:
-            self.lambda_head = nn.Linear((img_size**2), dict_size)
+            self.lambda_head = nn.Linear(img_size, dict_size)
         
         if self.solver_args.prior_distribution == "laplacian":
             self.warmup = 0.1
 
         if self.solver_args.prior_method == "vamp" or self.solver_args.prior_method == "clf":
-            pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, (img_size**2))
+            pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, img_size)
             self.pseudo_inputs = nn.Parameter(pseudo_init, requires_grad=True)
         if self.solver_args.prior_method == "clf":
            self.clf_temp = 1.0

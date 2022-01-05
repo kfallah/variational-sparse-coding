@@ -61,7 +61,7 @@ if __name__ == "__main__":
 
     # INITIALIZE 
     if solver_args.solver == "VI":
-        encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
+        encoder = VIEncoder(train_args.patch_size**2, train_args.dict_size, solver_args).to(default_device)
 
         vi_opt = torch.optim.SGD(encoder.parameters(), lr=solver_args.vsc_lr, #weight_decay=1e-4,
                                     momentum=0.9, nesterov=True)

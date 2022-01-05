@@ -24,23 +24,28 @@ class ConvEncoder(nn.Module):
         super(ConvEncoder, self).__init__()
         self.enc = nn.Sequential(
                 # 32 x 32
-                nn.Conv2d(num_channels, 32, 4, 2, 1),
-                nn.BatchNorm2d(32),
+                nn.Conv2d(num_channels, 64, 4, 2, 1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(),
                 # 16 x 16
-                nn.Conv2d(32, 64, 4, 2, 1),
+                nn.Conv2d(64, 64, 4, 2, 1),
                 nn.BatchNorm2d(64),
                 nn.ReLU(),
                 # 8 x 8
                 nn.Conv2d(64, 128, 4, 2, 1),
                 nn.BatchNorm2d(128),
                 nn.ReLU(),
+                # 4 x 4
+                nn.Conv2d(128, 256, 4, 2, 1),
+                nn.BatchNorm2d(256),
+                nn.ReLU(),
                 # 1 x 1
-                nn.Conv2d(128, 256, 5, 4, 0),
+                nn.Conv2d(256, 256, 4, 2, 0),
                 nn.BatchNorm2d(256),
                 nn.ReLU()               
         )
-        self.linear = nn.Linear(256, num_feat)
+        #self.linear = nn.Linear(256, num_feat)
+        self.linear = nn.Identity()
 
 
     def forward(self, x):
@@ -50,27 +55,31 @@ class ConvEncoder(nn.Module):
 class ConvDecoder(nn.Module):
     def __init__(self, num_feat, num_channels):
         super(ConvDecoder, self).__init__()
-        self.linear = nn.Linear(num_feat, 256*4*4)
-        self.enc = nn.Sequential(
+        self.linear = nn.Linear(num_feat, 256*2*2)
+        self.dec = nn.Sequential(
                 nn.ReLU(),
                 nn.ConvTranspose2d(256, 128, 4, 2, 1),
+                nn.BatchNorm2d(128),
+                nn.ReLU(),
+                nn.ConvTranspose2d(128, 128, 4, 2, 1),
                 nn.BatchNorm2d(128),
                 nn.ReLU(),
                 nn.ConvTranspose2d(128, 64, 4, 2, 1),
                 nn.BatchNorm2d(64),
                 nn.ReLU(),
-                nn.ConvTranspose2d(64, 32, 4, 2, 1),
-                nn.BatchNorm2d(32),
+                nn.ConvTranspose2d(64, 64, 4, 2, 1),
+                nn.BatchNorm2d(64),
                 nn.ReLU(),
-                nn.ConvTranspose2d(32, num_channels, 4, 2, 1),
+                nn.ConvTranspose2d(64, num_channels, 4, 2, 1),
+                nn.Sigmoid()
         )
 
     def forward(self, x):
         # If decoding multiple samples per image, handle that across batches
         if x.dim() > 2:
-            x_hat = self.linear(x).reshape((len(x) * x.shape[1]), -1, 4, 4)
-            x_hat = self.enc(x_hat)
+            x_hat = self.linear(x).reshape((len(x) * x.shape[1]), -1, 2, 2)
+            x_hat = self.dec(x_hat)
             return x_hat.reshape(len(x), x.shape[1], *x_hat.shape[1:])
         else:
-            x_hat = self.linear(x).reshape(len(x), -1, 4, 4)
-            return self.enc(x_hat)
+            x_hat = self.linear(x).reshape(len(x), -1, 2, 2)
+            return self.dec(x_hat)

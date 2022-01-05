@@ -15,10 +15,11 @@ from types import SimpleNamespace
 import numpy as np
 from matplotlib import pyplot as plt
 import torch
+import torch.nn.functional as F
 
-from utils.solvers import FISTA
 from model.feature_enc import ConvDecoder
 from model.vi_encoder import VIEncoder
+from model.util import FISTA_pytorch
 from model.scheduler import CycleScheduler
 from utils.data_loader import load_celeba
 from utils.util import *
@@ -52,31 +53,35 @@ if __name__ == "__main__":
 
     # INITIALIZE 
     decoder = ConvDecoder(train_args.dict_size, 3).to(default_device)
-    params = list(decoder.parameters())
 
     if solver_args.solver == "VI":
-        encoder = VIEncoder(16, train_args.dict_size, solver_args).to(default_device)   
-        params += list(encoder.parameters())
+        encoder = VIEncoder(16, train_args.dict_size, solver_args).to(default_device)  
+        #opt = torch.optim.SGD(list(encoder.parameters()) + list(decoder.parameters()),
+        #                      lr=train_args.lr, weight_decay=train_args.weight_decay,
+        #                      momentum=0.9, nesterov=True)
+        opt = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
+                                lr=train_args.lr, betas=(0.5, 0.999), weight_decay=train_args.weight_decay) 
         torch.save({'encoder': encoder.state_dict(), 'decoder': decoder.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
     else:
+        #opt = torch.optim.SGD(decoder.parameters(), lr=train_args.lr, weight_decay=train_args.weight_decay,
+        #                      momentum=0.9, nesterov=True)
+        opt = torch.optim.Adam(decoder.parameters(), lr=train_args.lr, betas=(0.5, 0.999), 
+                               weight_decay=train_args.weight_decay) 
         torch.save({'decoder': decoder.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
 
-    opt = torch.optim.SGD(params, lr=train_args.lr, weight_decay=train_args.weight_decay,
-                          momentum=0.9, nesterov=True)
     scheduler = CycleScheduler(opt, train_args.lr,  n_iter=train_args.epochs * len(train_loader),
                                momentum=None, warmup_proportion=0.05) 
 
     # Initialize empty arrays for tracking learning data
     lambda_list = np.zeros((train_args.epochs, train_args.dict_size))
     coeff_est = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
-    train_loss, val_recon, val_l1 = np.zeros(train_args.epochs), np.zeros(train_args.epochs), np.zeros(train_args.epochs)
+    val_recon, val_l1 = np.zeros(train_args.epochs), np.zeros(train_args.epochs)
     val_iwae_loss, val_kl_loss = np.zeros(train_args.epochs), np.zeros(train_args.epochs)
     train_time = np.zeros(train_args.epochs)
 
     # TRAIN MODEL #
     init_time = time.time()
     for j in range(train_args.epochs):
-        epoch_loss = np.zeros(len(train_loader))
         if solver_args.solver == "VI":
             encoder.train()
         decoder.train()
@@ -85,17 +90,19 @@ if __name__ == "__main__":
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
-                # TODO: Transfer FISTA via PyTorch
-                b_cu = FISTA(dictionary, patches, tau=solver_args.lambda_)
+                decoder.eval()
+                _, b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
+                                                         solver_args.lambda_, max_iter=1000, tol=1e-5, 
+                                                         device=default_device)
+                decoder.train()
+                x_hat = decoder(b_cu)
+                iwae_loss = F.mse_loss(x_hat, x) 
             elif solver_args.solver == "VI":
                 iwae_loss, recon_loss, kl_loss, b_cu = encoder(x, decoder)
             opt.zero_grad()
             iwae_loss.backward()
             opt.step()
             scheduler.step()
-
-            # Calculate loss after gradient step
-            epoch_loss[i] = 0.5 * recon_loss.mean().item() + solver_args.lambda_ * torch.sum(torch.abs(b_cu)).detach().cpu().numpy()
 
             # Ramp up sigmoid for spike-slab
             if solver_args.prior_distribution == "concreteslab":
@@ -126,23 +133,27 @@ if __name__ == "__main__":
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
-                b_hat = FISTA(dictionary, patches, tau=solver_args.lambda_)
-                b_true = np.array(b_hat)
-                iwae_loss, kl_loss = 0., np.array(0.)
+                (recon_loss, _, _), b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
+                                                         solver_args.lambda_, max_iter=1000, tol=1e-5, 
+                                                         device=default_device)
+                with torch.no_grad():
+                    x_hat = decoder(b_cu)
+                    recon_loss = F.mse_loss(x_hat, x).item()
+                iwae_loss, kl_loss = torch.tensr(-1), torch.tensor(-1)
             elif solver_args.solver == "VI":
                 with torch.no_grad():
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(x, decoder)
-                b_hat = b_cu.detach().cpu().numpy()
+                    recon_loss = recon_loss.mean().item()
+            b_hat = b_cu.detach().cpu().numpy()
 
             # Compute and save loss
-            epoch_val_recon[i] = recon_loss.mean().item()
+            epoch_val_recon[i] = recon_loss
             epoch_val_l1[i] = torch.sum(torch.abs(b_cu)).detach().cpu().numpy()
             epoch_iwae_loss[i], epoch_kl_loss[i]  = iwae_loss.item(), kl_loss.mean().item()
 
         # Save and print data from epoch
         train_time[j] = time.time() - init_time
         epoch_time = train_time[0] if j == 0 else train_time[j] - train_time[j - 1]
-        train_loss[j] = np.sum(epoch_loss) / len(train_loader.dataset)
         val_recon[j], val_l1[j] = np.sum(epoch_val_recon) / len(test_loader.dataset), np.sum(epoch_val_l1) / len(test_loader.dataset)
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         coeff_est[j] = b_cu.detach().cpu().numpy()
@@ -153,6 +164,8 @@ if __name__ == "__main__":
 
         if solver_args.debug:
             print_debug(train_args, b_hat, b_hat)
+            for param_group in opt.param_groups:
+                logging.info(param_group['lr'])
             logging.info("Mean lambda value: {:.3E}".format(lambda_list[j].mean()))
             logging.info("Est IWAE loss: {:.3E}".format(val_iwae_loss[j]))
             logging.info("Est KL loss: {:.3E}".format(val_kl_loss[j]))
@@ -169,16 +182,14 @@ if __name__ == "__main__":
                 plt.close()
 
             np.savez_compressed(train_args.save_path + f"train_savefile.npz",
-                    lambda_list=lambda_list, time=train_time, train=train_loss, val_recon=val_recon, 
+                    lambda_list=lambda_list, time=train_time, val_recon=val_recon, 
                     val_l1=val_l1, val_iwae_loss=val_iwae_loss, val_kl_loss=val_kl_loss, coeff_est=coeff_est)
             if solver_args.solver == "VI":
                 torch.save({'encoder': encoder.state_dict(), 'decoder': decoder.state_dict()}, 
                            train_args.save_path + f"modelstate_epoch{j+1}.pt")
             else:
                 torch.save({'decoder': decoder.state_dict()}, train_args.save_path + f"modelstate_epoch{j+1}.pt")
-        logging.info("Epoch {} of {}, Avg Train Loss = {:.4E}, Avg Val Loss = {:.4E}, Time = {:.0f} secs".format(j + 1,
-                                                                                                          train_args.epochs,
-                                                                                                          train_loss[j],
-                                                                                                          val_recon[j] + solver_args.lambda_ * val_l1[j],
-                                                                                                          epoch_time))
+        logging.info("Epoch {} of {}, Val Recon: {:.3E}, Val KL: {:.3E}, Val SC: {:.3E}, Time = {:.0f} secs"\
+                     .format(j + 1, train_args.epochs, val_recon[j],  val_kl_loss[j], \
+                             val_recon[j] + solver_args.lambda_ * val_l1[j], epoch_time))
         logging.info("\n")

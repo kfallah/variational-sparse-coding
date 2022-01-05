@@ -83,7 +83,7 @@ for idx, train_run in enumerate(file_list):
         np.random.seed(train_args.seed)
         torch.manual_seed(train_args.seed)
         
-        encoder = VIEncoder(train_args.patch_size, train_args.dict_size, solver_args).to(default_device)
+        encoder = VIEncoder(train_args.patch_size**2, train_args.dict_size, solver_args).to(default_device)
         encoder.load_state_dict(torch.load(train_run + f"encoderstate_epoch{epoch}.pt", map_location=default_device)['model_state'])
         encoder.ramp_hyperparams()
 

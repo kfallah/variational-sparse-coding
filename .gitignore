@@ -1,5 +1,8 @@
 results
 prior_comp
+results_celeba
+results_sae
+comp256
 baseline
 *.txt
 figures

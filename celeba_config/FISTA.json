@@ -1,19 +1,19 @@
 {
     "train": {
-      "device": [0],
+      "device": [1],
       "amp": false,
       "seed": 0,
       "train_samples": 150000,
-      "batch_size": 500,
+      "batch_size": 100,
       "dict_size": 225,
       "epochs": 200,
       "save_freq": 20,
-      "save_path": "results_celeba/gaussian_kl0/",
+      "save_path": "results_celeba/FISTA/",
       "lr": 3e-4,
-      "weight_decay": 1e-5
+      "weight_decay": 5e-4
     },
     "solver": {
-      "solver": "VI",
+      "solver": "FISTA",
       "feature_enc": "CONV",
       "lambda_": 0.25,
       "debug": true,
