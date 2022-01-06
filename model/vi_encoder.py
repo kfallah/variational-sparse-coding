@@ -21,18 +21,16 @@ class VIEncoder(nn.Module):
 
         if self.solver_args.feature_enc == "MLP":
             self.enc = MLPEncoder(int(np.sqrt(img_size)))
-            if self.solver_args.prior_method == "clf":
-                self.clf = nn.Sequential(
-                            MLPEncoder(int(np.sqrt(img_size))),
-                            nn.Linear(img_size, self.solver_args.num_pseudo_inputs)
-                        )
+            input_size = (img_size**2)
         elif self.solver_args.feature_enc == "CONV":
             img_size = 256
             self.enc = ConvEncoder(img_size, 3)
+            input_size = (3, 64, 64)
         elif self.solver_args.feature_enc == "RES":
             self.enc = models.resnet18()
             self.enc.fc = nn.Identity()
             img_size = 512
+            input_size = (3, 64, 64)
         else:
             raise NotImplementedError
 
@@ -45,15 +43,22 @@ class VIEncoder(nn.Module):
             self.warmup = 0.0
         if self.solver_args.threshold and self.solver_args.theshold_learn:
             self.lambda_head = nn.Linear(img_size, dict_size)
-        
         if self.solver_args.prior_distribution == "laplacian":
             self.warmup = 0.1
 
         if self.solver_args.prior_method == "vamp" or self.solver_args.prior_method == "clf":
-            pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, img_size)
+            pseudo_init = torch.randn(self.solver_args.num_pseudo_inputs, *input_size)
             self.pseudo_inputs = nn.Parameter(pseudo_init, requires_grad=True)
         if self.solver_args.prior_method == "clf":
-           self.clf_temp = 1.0
+            self.clf_temp = 1.0
+            if self.solver_args.feature_enc == "MLP":
+                self.clf = nn.Sequential(
+                            MLPEncoder(int(np.sqrt(img_size))),
+                            nn.Linear(img_size, self.solver_args.num_pseudo_inputs)
+                        )
+            else:
+                self.clf = models.resnet18() 
+                self.clf.fc = nn.Linear(512, self.solver_args.num_pseudo_inputs)
 
     def ramp_hyperparams(self):
         self.temp = 1e-2

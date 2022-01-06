@@ -27,6 +27,7 @@ def load_celeba(path, train_args):
                                         transforms.Resize(64),
                                         transforms.ToTensor(),
                                     ]))
+    test_data = torch.utils.data.Subset(test_data, torch.arange(train_args.val_samples))
 
     train_loader = torch.utils.data.DataLoader(train_data, batch_size=train_args.batch_size,
                                                shuffle=True, num_workers=8)

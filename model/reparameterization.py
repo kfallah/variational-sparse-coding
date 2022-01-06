@@ -84,8 +84,8 @@ def clf_kl(solver_args, **params):
     pseudo_shift, pseudo_logscale =  params['encoder'].shift(pseudo_feat),  params['encoder'].scale(pseudo_feat)
     pseudo_shift, pseudo_logscale = pseudo_shift[None, None], pseudo_logscale[None, None]
     shift, logscale = params['shift'][:, :, None], params['logscale'][:, :, None]
-    clf_logit = params['encoder'].clf(params['x'])
-    selection = F.gumbel_softmax(clf_logit, tau=params['encoder'].clf_temp)
+    clf_logit = params['encoder'].clf(params['x'][:, 0])
+    selection = F.gumbel_softmax(clf_logit, tau=params['encoder'].clf_temp).unsqueeze(1)
 
     if solver_args.prior_distribution == "laplacian":
         kl_loss = ((shift - pseudo_shift).abs() / pseudo_logscale.exp()) + pseudo_logscale - logscale - 1
@@ -204,10 +204,10 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     # From first submission of (Tonolini et al 2020) without pseudo-inputs
 
     # Repeat based on the number of samples
-    x = x.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    shift = shift.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    logscale = logscale.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
-    logspike = logspike.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+    x = x.repeat(solver_args.num_samples, *torch.ones(x.dim(), dtype=int)).transpose(1, 0)
+    shift = shift.repeat(solver_args.num_samples, *torch.ones(shift.dim(), dtype=int)).transpose(1, 0)
+    logscale = logscale.repeat(solver_args.num_samples, *torch.ones(logscale.dim(), dtype=int)).transpose(1, 0)
+    logspike = logspike.repeat(solver_args.num_samples, *torch.ones(logspike.dim(), dtype=int)).transpose(1, 0)
     spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
 
     std = encoder.warmup * torch.exp(0.5*logscale) + np.sqrt(1 - encoder.warmup)

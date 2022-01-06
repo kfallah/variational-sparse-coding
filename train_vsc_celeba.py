@@ -139,7 +139,7 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     x_hat = decoder(b_cu)
                     recon_loss = F.mse_loss(x_hat, x).item()
-                iwae_loss, kl_loss = torch.tensr(-1), torch.tensor(-1)
+                iwae_loss, kl_loss = torch.tensor(-1.), torch.tensor(-1.)
             elif solver_args.solver == "VI":
                 with torch.no_grad():
                     iwae_loss, recon_loss, kl_loss, b_cu = encoder(x, decoder)
