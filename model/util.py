@@ -75,6 +75,7 @@ def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, device='cpu'
         x_hat = A(z)
         loss = F.mse_loss(x_hat, x, reduction='sum')
         loss.backward()
+        torch.nn.utils.clip_grad_norm_([z], 1e2)
         z_opt.step()
         opt_scheduler.step()
 

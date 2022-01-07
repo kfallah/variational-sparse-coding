@@ -15,12 +15,13 @@ def show_dict(phi, save_dir):
     Create a figure for dictionary
     :param phi: Dictionary. Dimensions expected as pixels x num dictionaries
     """
+    dict_mag = np.argsort(-1*np.linalg.norm(phi, axis=0))
     num_dictionaries = phi.shape[1]
     patch_size = int(np.sqrt(phi.shape[0]))
     fig = plt.figure(figsize=(12, 12))
     for i in range(num_dictionaries):
         plt.subplot(int(np.sqrt(num_dictionaries)), int(np.sqrt(num_dictionaries)), i + 1)
-        dict_element = phi[:, i].reshape(patch_size, patch_size)
+        dict_element = phi[:, dict_mag[i]].reshape(patch_size, patch_size)
         plt.imshow(dict_element, cmap='gray')
     plt.setp(plt.gcf().get_axes(), xticks=[], yticks=[])
     plt.savefig(save_dir, bbox_inches='tight')
