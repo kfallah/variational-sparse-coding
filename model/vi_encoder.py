@@ -42,7 +42,8 @@ class VIEncoder(nn.Module):
             self.temp = 1.0
             self.warmup = 0.0
         if self.solver_args.threshold and self.solver_args.theshold_learn:
-            self.lambda_head = nn.Linear(img_size, dict_size)
+            self.lambda_prior_alpha = nn.Linear(img_size, dict_size)
+            self.lambda_prior_beta = nn.Linear(img_size, dict_size)
         if self.solver_args.prior_distribution == "laplacian":
             self.warmup = 0.1
 
@@ -75,9 +76,10 @@ class VIEncoder(nn.Module):
 
         if self.solver_args.threshold:
             if self.solver_args.theshold_learn:
-                lambda_prior = self.lambda_head(feat).exp()
-                gamma_pred = gamma.Gamma(1, lambda_prior)
-                gamma_prior = gamma.Gamma(1, torch.ones_like(lambda_prior) / self.solver_args.threshold_lambda)
+                alpha = self.lambda_prior_alpha(feat).exp()
+                beta = self.lambda_prior_beta(feat).exp()
+                gamma_pred = gamma.Gamma(alpha, beta)
+                gamma_prior = gamma.Gamma(2, (2 * torch.ones_like(beta)) / self.solver_args.threshold_lambda)
 
                 self.lambda_ = gamma_pred.rsample()
                 self.lambda_kl_loss = torch.distributions.kl.kl_divergence(gamma_pred, gamma_prior)
@@ -85,18 +87,18 @@ class VIEncoder(nn.Module):
                 self.lambda_ = torch.ones_like(b_logscale) * self.solver_args.threshold_lambda
 
         if self.solver_args.prior_distribution == "laplacian":
-            iwae_loss, recon_loss, kl_loss, sparse_code = sample_laplacian(b_shift, b_logscale, x, decoder,
+            iwae_loss, recon_loss, kl_loss, sparse_codes, weight = sample_laplacian(b_shift, b_logscale, x, decoder,
                                                                  self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "gaussian":
-            iwae_loss, recon_loss, kl_loss, sparse_code  = sample_gaussian(b_shift, b_logscale, x, decoder,
+            iwae_loss, recon_loss, kl_loss, sparse_codes, weight  = sample_gaussian(b_shift, b_logscale, x, decoder,
                                                                  self, self.solver_args, idx=idx)
         elif self.solver_args.prior_distribution == "concreteslab":
             logspike = -F.relu(-self.spike(feat))
-            iwae_loss, recon_loss, kl_loss, sparse_code = sample_concreteslab(b_shift, b_logscale, logspike, x, decoder, 
+            iwae_loss, recon_loss, kl_loss, sparse_codes, weight = sample_concreteslab(b_shift, b_logscale, logspike, x, decoder, 
                                                                     self, self.solver_args, 
                                                                     self.temp, self.solver_args.spike_prior,
                                                                     idx=idx)       
         else:
             raise NotImplementedError
         
-        return iwae_loss, recon_loss, kl_loss, sparse_code
+        return iwae_loss, recon_loss, kl_loss, sparse_codes, weight

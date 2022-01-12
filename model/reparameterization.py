@@ -40,8 +40,15 @@ def fixed_kl(solver_args, **params):
         kl_loss = -0.5 * (1 + params['logscale'] - logscale_prior)
         kl_loss += 0.5 * ((params['shift'] ** 2) + (params['logscale']).exp()) / scale_prior
     elif solver_args.prior_distribution == "concreteslab":
+        # Gaussian slab
         slab_kl = -0.5 * params['spike'] * (1 + params['logscale'] - logscale_prior)
         slab_kl += 0.5 * params['spike'] * ((params['shift'] ** 2) + params['logscale'].exp()) / scale_prior
+        
+        # Laplacian slab
+        #scale = torch.exp(params['logscale'])
+        #slab_kl = params['spike_prior'] * (params['shift'].abs() / scale_prior) + logscale_prior - params['logscale'] - 1
+        #slab_kl += params['spike_prior'] * (scale / scale_prior) * (-(params['shift'].abs() / scale)).exp()        
+        
         spike_kl = ((1 - params['spike']) * torch.log((1 - params['spike']) / (1 - params['spike_prior']))) + \
                     (params['spike'] * torch.log(params['spike'] / params['spike_prior']))
         kl_loss = slab_kl + spike_kl
@@ -168,10 +175,10 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps*scale), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
+                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
 
-    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
+    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
 def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     # Repeat based on the number of samples
@@ -195,10 +202,10 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
+                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
 
-    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
+    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
 def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, temp=0.1, spike_prior=0.2, idx=None):
     # From first submission of (Tonolini et al 2020) without pseudo-inputs
@@ -210,10 +217,17 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
     logspike = logspike.repeat(solver_args.num_samples, *torch.ones(logspike.dim(), dtype=int)).transpose(1, 0)
     spike = torch.clamp(logspike.exp(), 1e-6, 1.0 - 1e-6) 
 
+    # Gaussian slab
     std = encoder.warmup * torch.exp(0.5*logscale) + np.sqrt(1 - encoder.warmup)
     eps = torch.randn_like(std)
-    gaussian = eps.mul(std) + (encoder.warmup * shift)
+    slab = eps.mul(std) + (encoder.warmup * shift)
 
+    # Laplacian slab
+    #std = encoder.warmup * torch.exp(logscale) + (1 - encoder.warmup)
+    #u = torch.rand_like(logscale) - 0.5
+    #eps = -std * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-6)) 
+    #slab = (encoder.warmup * shift) + eps
+    
     eta = torch.rand_like(std)
     u = torch.log(eta) - torch.log(1 - eta)
     selection = torch.sigmoid((u + logspike) / temp)
@@ -228,16 +242,16 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
         selection = gumbel_rao_argmax(spike_logit, 20, temp=temp)
         selection_use = torch.argmax(selection, dim=-1)
 
-    z = selection_use * gaussian
+    z = selection_use * slab
 
     kl_loss = compute_kl(solver_args, x=x, z=z, encoder=encoder, logscale=logscale,
                          shift=shift, logspike=logspike, spike=spike, 
                          spike_prior=spike_prior, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    z, iwae_loss = compute_iwae_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.iwae)
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
+                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
 
-    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z
+    return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
 def compute_recon_loss(x, z, A):
     if issubclass(type(A), nn.Module):
@@ -248,19 +262,23 @@ def compute_recon_loss(x, z, A):
 
     return recon_loss
 
-def compute_iwae_loss(z, recon_loss, kl_loss, iwae=False):
-    if iwae:
+def compute_loss(z, recon_loss, kl_loss, sample_method="avg"):
+    log_loss = recon_loss + kl_loss
+
+    if sample_method == "iwae":
         # Compute importance weights through softmax (due to computing log prob)
-        log_loss = recon_loss + kl_loss
-        weight = F.softmax(log_loss, dim=-1)
-        # Take z with largest weight
-        z_idx = torch.argmin(weight, dim=-1).detach()
-        z = z[torch.arange(len(z)), z_idx]
+        weight = F.softmax(-log_loss, dim=-1)
         # Compute weighted sum
         iwae_loss = (weight * log_loss).sum(dim=-1).mean()
+    elif sample_method == "max":
+        # Apply our sampling procedure which takes the sample with lowest ELBO, encouraging
+        # feature reuse
+        z_idx = torch.argmin(log_loss, dim=-1).detach()
+        weight = torch.zeros_like(recon_loss)
+        weight[torch.arange(len(z)), z_idx] = 1
     else:
-        # In traditional VAE, the loss is just a simple average over samples
-        z_idx = torch.argmin((recon_loss + kl_loss), dim=-1).detach()
-        z = z[torch.arange(len(z)), z_idx]
-        iwae_loss = (recon_loss + kl_loss).mean()
-    return z, iwae_loss
+        # Apply standard sampling from (Kingma & Welling)
+        weight = torch.ones_like(recon_loss) / recon_loss.shape[-1]
+
+    iwae_loss = (weight * log_loss).sum(dim=-1).mean()
+    return weight, iwae_loss

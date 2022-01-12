@@ -105,7 +105,7 @@ if __name__ == "__main__":
             elif solver_args.solver == "VI":
                 patches_cu = torch.tensor(patches.T).float().to(default_device)
                 dict_cu = torch.tensor(dictionary, device=default_device).float()
-                iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
+                iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu, patch_idx)
 
                 vi_opt.zero_grad()
                 iwae_loss.backward()
@@ -115,13 +115,20 @@ if __name__ == "__main__":
                 if solver_args.true_coeff and not train_args.fixed_dict:
                     b = FISTA(dictionary, patches, tau=solver_args.lambda_)
                 else:
-                    b = b_cu.detach().cpu().numpy().T
+                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                    b_select = b_cu[torch.arange(len(b_cu)), sample_idx].detach().cpu().numpy().T
+                    weight = weight.detach().cpu().numpy()
+                    b = b_cu.permute(1, 2, 0).detach().cpu().numpy()
+                    #print(weight.shape)
+                    #print(b.shape)
 
             # Take gradient step on dictionaries
             generated_patch = dictionary @ b
             residual = patches - generated_patch
             #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.5
-            step = ((residual @ b.T) / train_args.batch_size) - 2*train_args.fnorm_reg*dictionary#*select_penalty
+            #step = (((residual @ b.T)) / train_args.batch_size)
+            step = ((residual[:, :, None] * b[:, None]) * weight.T[:, None, None]).sum(axis=(0, 3)) / train_args.batch_size
+            step -= 2*train_args.fnorm_reg*dictionary#*select_penalty
             dictionary += step_size * step
             
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
@@ -129,9 +136,9 @@ if __name__ == "__main__":
                 dictionary /= np.sqrt(np.sum(dictionary ** 2, axis=0))
 
             # Calculate loss after gradient step
-            epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b) ** 2) + solver_args.lambda_ * np.sum(np.abs(b))
+            epoch_loss[i] = 0.5 * np.sum((patches - dictionary @ b_select) ** 2) + solver_args.lambda_ * np.sum(np.abs(b_select))
             # Log which dictionary entries are used
-            dict_use = np.count_nonzero(b, axis=1)
+            dict_use = np.count_nonzero(b_select, axis=1)
             dictionary_use[j] += dict_use / ((train_patches.shape[0] // train_args.batch_size))
 
             # Ramp up sigmoid for spike-slab
@@ -172,8 +179,10 @@ if __name__ == "__main__":
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(dictionary, device=default_device).float()
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu, patch_idx)
-                    b_hat = b_cu.detach().cpu().numpy().T
+                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu, patch_idx)
+                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                    b_select = b_cu[torch.arange(len(b_cu)), sample_idx]
+                    b_hat = b_select.detach().cpu().numpy().T
                     b_true = FISTA(dictionary, patches, tau=solver_args.lambda_)
 
             # Compute and save loss

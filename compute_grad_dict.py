@@ -16,18 +16,19 @@ from utils.data_loader import load_whitened_images
 
 
 # %%
+num_samples = 20
+sample_method = "max"
+file_suffix = f"samp_gaus"
+base_lambda = 8.0
+
 # Coadapt baseline
 file_list = [
     #"prior_comp/FISTA_fnorm1e-4/",
     #"comp256/concreteslab_gs_iwae2/",
     #"comp256/concreteslab_st_iwae2/",
     #"comp256/concreteslab_gr_iwae2/",
-    "comp256/gaussian_iwae/",
-    "comp256/gaussian_thresh_st_iwae/",
-    "comp256/gaussian_thresh_iwae/",
-    #"comp256/laplacian_iwae/",
-    #"comp256/laplacian_thresh_st_iwae/",
-    #"comp256/laplacian_thresh_iwae/",
+    "comp256_v2/laplacian_thresh_1samp/",
+    "comp256_v2/laplacian_thresh_20samp/",
 ]
 
 file_labels = [
@@ -35,16 +36,9 @@ file_labels = [
     #"CS GumbelSoftmax Estimator",
     #"CS StraightThrough Estimator",
     #"CS GumbelRao Estimator",
-    "Gaussian",
-    "Thresholded Gaussian SG",
-    "Thresholded Gaussian",
-    #"Laplacian",
-    #"Thresholded Laplacian SG",
-    #"Thresholded Laplacian"
+    "Thresholded Laplacian 1 Sample",
+    "Thresholded Laplacian 20 Samples",
 ]
-
-base_lambda = 8.0
-file_suffix = "1samp_gaus"
 
 # %%
 #with open(base_run + "config.json") as json_data:
@@ -122,13 +116,17 @@ for idx, train_run in enumerate(file_list):
                     b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                     b_cu = torch.tensor(b, device=default_device).float().T
                 elif solver_args.solver == "VI":
-                    encoder.solver_args.iwae = True
+                    encoder.solver_args.sample_method = "max"
                     encoder.solver_args.num_samples = 500
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
-                true_residual = (patches_cu - b_cu.detach() @ phi.T)
-                true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  256)
+                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, phi.detach()) 
+
+                sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                b_cu = b_cu.permute(1, 0, 2).detach()
+                true_residual = (patches_cu - b_cu @ phi.T)
+                true_grad = ((true_residual * b_cu) * weight.T[..., None]).sum(dim=0) / (-0.5 * train_args.dict_size)
+                #true_grad = b_cu.detach()[..., None] * true_residual[:, None] / (-0.5 *  256)
                 true_grad = true_grad.detach().cpu()
-                true_residual = true_residual.detach().cpu()
+                true_residual = true_residual[sample_idx, torch.arange(true_residual.shape[1])].detach().cpu()
 
                 batch_var = []
                 batch_residual = []
@@ -138,13 +136,19 @@ for idx, train_run in enumerate(file_list):
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
                         b_cu = torch.tensor(b, device=default_device).float().T
                     elif solver_args.solver == "VI":
-                        encoder.solver_args.iwae = False
-                        encoder.solver_args.num_samples = 1
-                        iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, phi.detach()) 
-                    
-                    x_hat = b_cu.detach() @ phi.T
-                    residual = (patches_cu - x_hat)
-                    model_grad = (b_cu.detach()[..., None] * residual[:, None] / (-0.5 *  256)).detach().cpu()
+                        encoder.solver_args.sample_method = sample_method
+                        encoder.solver_args.num_samples = num_samples
+                        iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, phi.detach()) 
+
+                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                    b_cu = b_cu.permute(1, 0, 2).detach()
+                    x_hat = b_cu @ phi.T
+                    residual = patches_cu - x_hat
+                    model_grad = ((residual * b_cu) * weight.T[..., None]).sum(dim=0) / (-0.5 * train_args.dict_size)
+                    model_grad = model_grad.detach().cpu()
+                    x_hat = x_hat[sample_idx, torch.arange(x_hat.shape[1])]
+                    residual = residual[sample_idx, torch.arange(residual.shape[1])]
+
                     batch_var.append(model_grad)
                     batch_residual.append(residual.detach().cpu())
                     image_est.append(x_hat.detach().cpu())
@@ -154,11 +158,11 @@ for idx, train_run in enumerate(file_list):
                 image_est = torch.stack(image_est)
 
                 grad_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_grad - torch.mean(batch_var, dim=0)).mean()  / (val_patches.shape[0] // train_args.batch_size)
-                grad_var[file_labels[idx]][epoch] += torch.var(batch_var, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
+                grad_var[file_labels[idx]][epoch] += torch.var(batch_var, dim=0).sum() / (val_patches.shape[0] // train_args.batch_size)
                 residual_bias[file_labels[idx]][epoch] += torch.linalg.norm(true_residual - torch.mean(batch_residual, dim=0)).mean() / (val_patches.shape[0] // train_args.batch_size)
-                residual_var[file_labels[idx]][epoch] += torch.var(batch_residual, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
+                residual_var[file_labels[idx]][epoch] += torch.var(batch_residual, dim=0).sum() / (val_patches.shape[0] // train_args.batch_size)
                 image_bias[file_labels[idx]][epoch] += torch.linalg.norm(patches_cu.detach().cpu() - torch.mean(image_est, dim=0), axis=1).mean() / (val_patches.shape[0] // train_args.batch_size)
-                image_var[file_labels[idx]][epoch] += torch.var(image_est, dim=0).mean() / (val_patches.shape[0] // train_args.batch_size)
+                image_var[file_labels[idx]][epoch] += torch.var(image_est, dim=0).sum() / (val_patches.shape[0] // train_args.batch_size)
 
             logging.info(f"Epoch {epoch}, grad bias: {grad_bias[file_labels[idx]][epoch]:.3E}, grad var: {grad_var[file_labels[idx]][epoch]:.3E}, " + \
                          f"residual bias: {residual_bias[file_labels[idx]][epoch]:.3E}, residual var: {residual_var[file_labels[idx]][epoch]:.3E}, " + \

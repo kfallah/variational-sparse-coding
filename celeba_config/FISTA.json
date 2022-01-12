@@ -16,10 +16,10 @@
     "solver": {
       "solver": "FISTA",
       "feature_enc": "CONV",
-      "lambda_": 8.0,
+      "lambda_": 16.0,
       "debug": true,
       "true_coeff": false,
-      "iwae": false,
+      "sample_method": "max",
       "num_samples": 1,
       "threshold": false,
       "threshold_lambda": 0.5,

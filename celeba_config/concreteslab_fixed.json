@@ -19,7 +19,7 @@
       "lambda_": 0.25,
       "debug": true,
       "true_coeff": false,
-      "iwae": false,
+      "sample_method": "max",
       "num_samples": 1,
       "threshold": false,
       "threshold_lambda": 0.25,

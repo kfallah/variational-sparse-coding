@@ -27,8 +27,8 @@ from model.lista import VIEncoderLISTA, LISTA
 from model.vi_encoder import VIEncoder
 
 def compute_statistics(run_path, train_args, solver_args):
-    solver_args.iwae = False
-    solver_args.num_samples = 1
+    #solver_args.sample_method = "max"
+    #solver_args.num_samples = 1
 
     final_phi = np.load(train_args.save_path + 'train_savefile.npz')['phi'][train_args.epochs - 1]
     _, val_patches = load_whitened_images(train_args, final_phi)
@@ -73,8 +73,10 @@ def compute_statistics(run_path, train_args, solver_args):
                 with torch.no_grad():
                     patches_cu = torch.tensor(patches.T).float().to(default_device)
                     dict_cu = torch.tensor(phi, device=default_device).float()
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu)
-                    code_est = b_cu.detach().cpu().numpy()
+                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu)
+                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                    b_select = b_cu[torch.arange(len(b_cu)), sample_idx]
+                    code_est = b_select.detach().cpu().numpy()
 
             for k in range(phi.shape[1]):
                 kl_collapse_count[k] += (kl_loss[:, k] <= 1e-2).sum() / val_patches.shape[0]

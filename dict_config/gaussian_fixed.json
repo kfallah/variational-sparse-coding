@@ -28,7 +28,7 @@
     "debug": true,
     "true_coeff": false,
     "gradient_variance": false,
-    "iwae": true,
+    "sample_method": "max",
     "num_samples": 1,
     "threshold": false,
     "threshold_lambda": 0.3,

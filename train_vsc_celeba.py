@@ -98,7 +98,7 @@ if __name__ == "__main__":
                 x_hat = decoder(b_cu)
                 iwae_loss = F.mse_loss(x_hat, x) 
             elif solver_args.solver == "VI":
-                iwae_loss, recon_loss, kl_loss, b_cu = encoder(x, decoder)
+                iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
             opt.zero_grad()
             iwae_loss.backward()
             opt.step()
@@ -140,15 +140,18 @@ if __name__ == "__main__":
                     x_hat = decoder(b_cu)
                     recon_loss = F.mse_loss(x_hat, x).item()
                 iwae_loss, kl_loss = torch.tensor(-1.), torch.tensor(-1.)
+                b_hat = b_cu.detach().cpu().numpy()
             elif solver_args.solver == "VI":
                 with torch.no_grad():
-                    iwae_loss, recon_loss, kl_loss, b_cu = encoder(x, decoder)
+                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
                     recon_loss = recon_loss.mean().item()
-            b_hat = b_cu.detach().cpu().numpy()
+                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                    b_select = b_cu[torch.arange(len(b_cu)), sample_idx].detach()
+                    b_hat = b_select.cpu().numpy()
 
             # Compute and save loss
             epoch_val_recon[i] = recon_loss
-            epoch_val_l1[i] = torch.sum(torch.abs(b_cu)).detach().cpu().numpy()
+            epoch_val_l1[i] = np.sum(np.abs(b_hat))
             epoch_iwae_loss[i], epoch_kl_loss[i]  = iwae_loss.item(), kl_loss.mean().item()
 
         # Save and print data from epoch
@@ -156,7 +159,7 @@ if __name__ == "__main__":
         epoch_time = train_time[0] if j == 0 else train_time[j] - train_time[j - 1]
         val_recon[j], val_l1[j] = np.sum(epoch_val_recon) / len(test_loader.dataset), np.sum(epoch_val_l1) / len(test_loader.dataset)
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
-        coeff_est[j] = b_cu.detach().cpu().numpy()
+        coeff_est[j] = b_hat
         if solver_args.threshold and solver_args.solver == "VI":
             lambda_list[j] = encoder.lambda_.data.mean(dim=0).cpu().numpy()
         else:
@@ -174,7 +177,7 @@ if __name__ == "__main__":
         if j < 10 or (j + 1) % train_args.save_freq == 0 or (j + 1) == train_args.epochs:
             fig, ax = plt.subplots(nrows=2, ncols=5, figsize=(14, 8))
             with torch.no_grad():
-                x_hat = decoder(b_cu)
+                x_hat = decoder(b_select)
                 for im_idx in range(5):
                     ax[0, im_idx].imshow(x[im_idx].permute(1, 2, 0).detach().cpu().numpy())
                     ax[1, im_idx].imshow(x_hat[im_idx].permute(1, 2, 0).detach().cpu().numpy())

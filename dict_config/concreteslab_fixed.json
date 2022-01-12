@@ -1,6 +1,6 @@
 {
   "train": {
-    "device": 1,
+    "device": 0,
     "seed": 0,
     "fixed_dict": false,
     "synthetic_data": false,
@@ -12,7 +12,7 @@
     "patch_size": 11,
     "epochs": 200,
     "save_freq": 20,
-    "save_path": "results/concreteslab_pytorch_iwae/",
+    "save_path": "results/concreteslab_5samp_temp5e-1/",
     "normalize": false,
     "fnorm_reg": 0.0001,
     "lr": 0.5,
@@ -27,17 +27,17 @@
     "debug": true,
     "true_coeff": false,
     "gradient_variance": false,
-    "iwae": true,
-    "num_samples": 10,
+    "sample_method": "max",
+    "num_samples": 5,
     "threshold": false,
     "threshold_lambda": 0.01,
     "theshold_learn": false,
     "prior_distribution": "concreteslab",
     "prior_method": "fixed",
-    "estimator": "gumbel",
+    "estimator": "straight",
     "spread_prior": 0.1,
     "spike_prior": 0.1,
-    "temp_min": 0.005,
+    "temp_min": 0.5,
     "kl_weight": 0.01
   }
 }

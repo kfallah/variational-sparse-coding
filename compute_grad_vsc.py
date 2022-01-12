@@ -102,10 +102,10 @@ for idx, train_run in enumerate(file_list):
             patches = val_patches[j * train_args.batch_size:(j + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
             patches_cu = torch.tensor(patches.T).float().to(default_device)
 
-            encoder.solver_args.iwae = True
+            solver_args.sample_method = "max"
             encoder.solver_args.num_samples = 200
             sgd.zero_grad()
-            iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu.detach()) 
+            iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu.detach()) 
             iwae_loss.backward()
             model_grad = [param.grad.data.reshape(-1).detach().cpu() for param in encoder.parameters()]
             model_grad = torch.cat(model_grad)
@@ -113,10 +113,10 @@ for idx, train_run in enumerate(file_list):
 
             batch_var = []
             for k in range(300):
-                encoder.solver_args.iwae = True
+                solver_args.sample_method = "max"
                 encoder.solver_args.num_samples = 100
                 sgd.zero_grad()
-                iwae_loss, recon_loss, kl_loss, b_cu = encoder(patches_cu, dict_cu.detach()) 
+                iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu.detach()) 
                 iwae_loss.backward()
 
                 model_grad = [param.grad.data.reshape(-1).detach().cpu() for param in encoder.parameters()]
