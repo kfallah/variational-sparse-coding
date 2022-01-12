@@ -40,7 +40,7 @@ class VIEncoder(nn.Module):
         if self.solver_args.prior_distribution == "concreteslab":
             self.spike = nn.Linear(img_size, dict_size)
             self.temp = 1.0
-            self.warmup = 0.0
+            self.warmup = 0.1
         if self.solver_args.threshold and self.solver_args.theshold_learn:
             self.lambda_prior_alpha = nn.Linear(img_size, dict_size)
             self.lambda_prior_beta = nn.Linear(img_size, dict_size)
@@ -79,7 +79,7 @@ class VIEncoder(nn.Module):
                 alpha = self.lambda_prior_alpha(feat).exp()
                 beta = self.lambda_prior_beta(feat).exp()
                 gamma_pred = gamma.Gamma(alpha, beta)
-                gamma_prior = gamma.Gamma(2, (2 * torch.ones_like(beta)) / self.solver_args.threshold_lambda)
+                gamma_prior = gamma.Gamma(3, (3 * torch.ones_like(beta)) / self.solver_args.threshold_lambda)
 
                 self.lambda_ = gamma_pred.rsample()
                 self.lambda_kl_loss = torch.distributions.kl.kl_divergence(gamma_pred, gamma_prior)

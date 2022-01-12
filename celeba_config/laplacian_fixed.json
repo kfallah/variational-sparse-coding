@@ -1,6 +1,6 @@
 {
     "train": {
-      "device": [0],
+      "device": [1],
       "amp": false,
       "seed": 0,
       "train_samples": 150000,
