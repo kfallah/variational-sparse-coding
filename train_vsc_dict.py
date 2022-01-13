@@ -96,15 +96,17 @@ if __name__ == "__main__":
         for i in range(train_patches.shape[0] // train_args.batch_size):
             patches = train_patches[shuffler][i * train_args.batch_size:(i + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
             patch_idx = shuffler[i * train_args.batch_size:(i + 1) * train_args.batch_size]
+            patches_cu = torch.tensor(patches.T).float().to(default_device)
+            dict_cu = torch.tensor(dictionary, device=default_device).float()
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
                 b = FISTA(dictionary, patches, tau=solver_args.lambda_)
+                b_select = np.array(b)
+                b = torch.tensor(b, device=default_device)
             elif solver_args.solver == "ADMM":
                 b = ADMM(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.solver == "VI":
-                patches_cu = torch.tensor(patches.T).float().to(default_device)
-                dict_cu = torch.tensor(dictionary, device=default_device).float()
                 iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, dict_cu, patch_idx)
 
                 vi_opt.zero_grad()
@@ -117,18 +119,15 @@ if __name__ == "__main__":
                 else:
                     sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
                     b_select = b_cu[torch.arange(len(b_cu)), sample_idx].detach().cpu().numpy().T
-                    weight = weight.detach().cpu().numpy()
-                    b = b_cu.permute(1, 2, 0).detach().cpu().numpy()
-                    #print(weight.shape)
-                    #print(b.shape)
+                    weight = weight.detach()
+                    b = b_cu.permute(1, 2, 0).detach()
 
             # Take gradient step on dictionaries
-            generated_patch = dictionary @ b
-            residual = patches - generated_patch
+            generated_patch = dict_cu @ b
+            residual = patches_cu.T - generated_patch
             #select_penalty = np.sqrt(np.sum(dictionary ** 2, axis=0)) > 1.5
-            #step = (((residual @ b.T)) / train_args.batch_size)
             step = ((residual[:, :, None] * b[:, None]) * weight.T[:, None, None]).sum(axis=(0, 3)) / train_args.batch_size
-            step -= 2*train_args.fnorm_reg*dictionary#*select_penalty
+            step = step.detach().cpu().numpy() -  2*train_args.fnorm_reg*dictionary#*select_penalty
             dictionary += step_size * step
             
             # Normalize dictionaries. Required to prevent unbounded growth, Tikhonov regularisation also possible.
