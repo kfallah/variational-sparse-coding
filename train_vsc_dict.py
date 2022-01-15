@@ -74,6 +74,8 @@ if __name__ == "__main__":
             build_coreset(solver_args, encoder, train_patches, default_device)
         
         torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
+    elif solver_args.solver == "FISTA" or solver_args.solver == "ADMM":
+        lambda_warmup = 0.1
 
     # Initialize empty arrays for tracking learning data
     dictionary_saved = np.zeros((train_args.epochs, *dictionary.shape))
@@ -101,9 +103,13 @@ if __name__ == "__main__":
 
             # Infer coefficients
             if solver_args.solver == "FISTA":
-                b = FISTA(dictionary, patches, tau=solver_args.lambda_)
+                b = FISTA(dictionary, patches, tau=solver_args.lambda_*lambda_warmup)
                 b_select = np.array(b)
-                b = torch.tensor(b, device=default_device)
+                b = torch.tensor(b, device=default_device).unsqueeze(dim=0).float()
+                weight = torch.ones((len(b), 1), device=default_device)
+                lambda_warmup += 1e-4
+                if lambda_warmup >= 1.0:
+                    lambda_warmup = 1.0
             elif solver_args.solver == "ADMM":
                 b = ADMM(dictionary, patches, tau=solver_args.lambda_)
             elif solver_args.solver == "VI":

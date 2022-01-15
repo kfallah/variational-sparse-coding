@@ -67,7 +67,7 @@ class VIEncoder(nn.Module):
         self.warmup = 1.0
 
     def soft_threshold(self, z):
-        return F.relu(torch.abs(z) - torch.abs(self.lambda_[:, None, :])) * torch.sign(z)
+        return F.relu(torch.abs(z) - torch.abs(self.lambda_)) * torch.sign(z)
 
     def forward(self, x, decoder, idx=None):
         feat = self.enc(x)
@@ -81,10 +81,13 @@ class VIEncoder(nn.Module):
                 gamma_pred = gamma.Gamma(alpha, beta)
                 gamma_prior = gamma.Gamma(3, (3 * torch.ones_like(beta)) / self.solver_args.threshold_lambda)
 
-                self.lambda_ = gamma_pred.rsample()
+                self.lambda_ = gamma_pred.rsample([self.solver_args.num_samples]).transpose(1, 0)
                 self.lambda_kl_loss = torch.distributions.kl.kl_divergence(gamma_pred, gamma_prior)
             else:
                 self.lambda_ = torch.ones_like(b_logscale) * self.solver_args.threshold_lambda
+                self.lambda_ = self.lambda_.repeat(self.solver_args.num_samples, 
+                                                   *torch.ones(self.lambda_.dim(), dtype=int)).transpose(1, 0)
+
 
         if self.solver_args.prior_distribution == "laplacian":
             iwae_loss, recon_loss, kl_loss, sparse_codes, weight = sample_laplacian(b_shift, b_logscale, x, decoder,

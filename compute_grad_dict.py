@@ -16,28 +16,28 @@ from utils.data_loader import load_whitened_images
 
 
 # %%
-num_samples = 20
+distribution = "concreteslab"
+run_name = "Concrete Slab 1 Samp"
+
+num_samples = 1
 sample_method = "max"
-file_suffix = f"samp_gaus"
+file_suffix = f"{distribution}_{num_samples}samp"
 base_lambda = 8.0
+
 
 # Coadapt baseline
 file_list = [
-    #"prior_comp/FISTA_fnorm1e-4/",
-    #"comp256/concreteslab_gs_iwae2/",
-    #"comp256/concreteslab_st_iwae2/",
-    #"comp256/concreteslab_gr_iwae2/",
-    "comp256_v2/laplacian_thresh_1samp/",
-    "comp256_v2/laplacian_thresh_20samp/",
+    f"comp256_v4/{file_suffix}_v1/",
+    f"comp256_v4/{file_suffix}_v2/",
+    f"comp256_v4/{file_suffix}_v3/",
+
 ]
 
 file_labels = [
     #"FISTA",
-    #"CS GumbelSoftmax Estimator",
-    #"CS StraightThrough Estimator",
-    #"CS GumbelRao Estimator",
-    "Thresholded Laplacian 1 Sample",
-    "Thresholded Laplacian 20 Samples",
+    run_name + " v1",
+    run_name + " v2",
+    run_name + " v3",
 ]
 
 # %%
