@@ -209,7 +209,7 @@ if __name__ == "__main__":
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         coeff_est[j], coeff_true[j] = b_hat.T, b_true.T
         if solver_args.threshold and solver_args.solver == "VI":
-            lambda_list[j] = encoder.lambda_.data.mean(dim=0).cpu().numpy()
+            lambda_list[j] = encoder.lambda_.data.mean(dim=(0, 1)).cpu().numpy()
         else:
             lambda_list[j] = np.ones(train_args.dict_size) * -1
         dictionary_saved[j] = dictionary
