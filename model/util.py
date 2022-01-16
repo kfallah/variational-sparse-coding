@@ -61,11 +61,11 @@ def get_lr(optimizer):
     for param_group in optimizer.param_groups:
         return param_group['lr']
 
-def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, device='cpu'):
+def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, clip_grad=False, device='cpu'):
     z = nn.Parameter(torch.mul(torch.randn((len(x), dict_size), device=device),
-                     0.02), requires_grad=True)
+                     0.3), requires_grad=True)
     z_opt = torch.optim.SGD([z], lr=1e-3, nesterov=True, momentum=0.9)
-    opt_scheduler = torch.optim.lr_scheduler.ExponentialLR(z_opt, gamma=0.985)
+    opt_scheduler = torch.optim.lr_scheduler.ExponentialLR(z_opt, gamma=0.995)
     change = 1e99
     k = 0
     while k < max_iter and change > tol:
@@ -75,7 +75,8 @@ def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, device='cpu'
         x_hat = A(z)
         loss = F.mse_loss(x_hat, x, reduction='sum')
         loss.backward()
-        #torch.nn.utils.clip_grad_norm_([z], 1e2)
+        if clip_grad:
+            torch.nn.utils.clip_grad_norm_([z], 1e3)
         z_opt.step()
         opt_scheduler.step()
 

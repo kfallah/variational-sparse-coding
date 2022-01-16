@@ -1,10 +1,7 @@
 results
-prior_comp
 results_celeba
-results_sae
-comp256
+comp256*
 baseline
-*.txt
 figures
 *__pycache__*
 data

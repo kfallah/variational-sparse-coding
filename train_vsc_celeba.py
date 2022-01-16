@@ -65,6 +65,7 @@ if __name__ == "__main__":
     else:
         #opt = torch.optim.SGD(decoder.parameters(), lr=train_args.lr, weight_decay=train_args.weight_decay,
         #                      momentum=0.9, nesterov=True)
+        lambda_warmup = 1e-2
         opt = torch.optim.Adam(decoder.parameters(), lr=train_args.lr, betas=(0.5, 0.999), 
                                weight_decay=train_args.weight_decay) 
         torch.save({'decoder': decoder.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
@@ -92,8 +93,11 @@ if __name__ == "__main__":
             if solver_args.solver == "FISTA":
                 decoder.eval()
                 _, b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
-                                                         solver_args.lambda_, max_iter=1000, tol=1e-5, 
-                                                         device=default_device)
+                                        lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
+                                        clip_grad=solver_args.clip_grad, device=default_device)
+                lambda_warmup += 1e-3
+                if lambda_warmup >= 1.0:
+                    lambda_warmup = 1.0
                 decoder.train()
                 x_hat = decoder(b_cu)
                 iwae_loss = F.mse_loss(x_hat, x) 
@@ -134,12 +138,13 @@ if __name__ == "__main__":
             # Infer coefficients
             if solver_args.solver == "FISTA":
                 (recon_loss, _, _), b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
-                                                         solver_args.lambda_, max_iter=1000, tol=1e-5, 
-                                                         device=default_device)
+                                                         lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
+                                                         clip_grad=solver_args.clip_grad, device=default_device)
                 with torch.no_grad():
                     x_hat = decoder(b_cu)
                     recon_loss = F.mse_loss(x_hat, x).item()
                 iwae_loss, kl_loss = torch.tensor(-1.), torch.tensor(-1.)
+                b_select = b_cu.detach()
                 b_hat = b_cu.detach().cpu().numpy()
             elif solver_args.solver == "VI":
                 with torch.no_grad():
