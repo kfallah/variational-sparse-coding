@@ -73,8 +73,8 @@ def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, clip_grad=Fa
 
         z_opt.zero_grad()
         x_hat = A(z)
-        loss = F.mse_loss(x_hat, x, reduction='sum')
-        loss.backward()
+        loss = F.mse_loss(x_hat, x, reduction='none')
+        loss.sum(dim=0).mean().backward()
         if clip_grad:
             torch.nn.utils.clip_grad_norm_([z], 1e3)
         z_opt.step()
@@ -85,4 +85,4 @@ def FISTA_pytorch(x, A, dict_size, lambda_, max_iter=800, tol=1e-5, clip_grad=Fa
 
         change = torch.norm(z.data - old_coeff) / (torch.norm(old_coeff) + 1e-9)
         k += 1
-    return (loss.item(), get_lr(z_opt), k), z.data
+    return (loss.detach(), get_lr(z_opt), k), z.data
