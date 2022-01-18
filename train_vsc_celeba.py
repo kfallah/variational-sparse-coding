@@ -16,6 +16,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 import torch
 import torch.nn.functional as F
+from torch.cuda.amp import GradScaler, autocast
 
 from model.feature_enc import ConvDecoder
 from model.vi_encoder import VIEncoder
@@ -53,6 +54,7 @@ if __name__ == "__main__":
 
     # INITIALIZE 
     decoder = ConvDecoder(train_args.dict_size, 3).to(default_device)
+    scaler = GradScaler(enabled=train_args.amp)
 
     if solver_args.solver == "VI":
         encoder = VIEncoder(16, train_args.dict_size, solver_args).to(default_device)  
@@ -88,25 +90,28 @@ if __name__ == "__main__":
         decoder.train()
         for i, (x, y) in enumerate(train_loader):
             x = x.to(default_device)
+            
+            with autocast(enabled=train_args.amp):
+                # Infer coefficients
+                if solver_args.solver == "FISTA":
+                    decoder.eval()
+                    _, b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
+                                            lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
+                                            clip_grad=solver_args.clip_grad, device=default_device)
+                    lambda_warmup += 1e-3
+                    if lambda_warmup >= 1.0:
+                        lambda_warmup = 1.0
+                    decoder.train()
+                    x_hat = decoder(b_cu)
+                    iwae_loss = F.mse_loss(x_hat, x) 
+                elif solver_args.solver == "VI":
+                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
 
-            # Infer coefficients
-            if solver_args.solver == "FISTA":
-                decoder.eval()
-                _, b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
-                                        lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
-                                        clip_grad=solver_args.clip_grad, device=default_device)
-                lambda_warmup += 1e-3
-                if lambda_warmup >= 1.0:
-                    lambda_warmup = 1.0
-                decoder.train()
-                x_hat = decoder(b_cu)
-                iwae_loss = F.mse_loss(x_hat, x) 
-            elif solver_args.solver == "VI":
-                iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
-            opt.zero_grad()
-            iwae_loss.backward()
-            opt.step()
-            scheduler.step()
+                opt.zero_grad()
+                scaler.scale(iwae_loss).backward()
+                scaler.step(opt)
+                scaler.update()                
+                scheduler.step()
 
             # Ramp up sigmoid for spike-slab
             if solver_args.prior_distribution == "concreteslab":
@@ -135,24 +140,25 @@ if __name__ == "__main__":
             # Load next batch of validation patches
             x = x.to(default_device)
 
-            # Infer coefficients
-            if solver_args.solver == "FISTA":
-                (recon_loss, _, _), b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
-                                                         lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
-                                                         clip_grad=solver_args.clip_grad, device=default_device)
-                with torch.no_grad():
-                    x_hat = decoder(b_cu)
-                    recon_loss = F.mse_loss(x_hat, x).item()
-                iwae_loss, kl_loss = torch.tensor(-1.), torch.tensor(-1.)
-                b_select = b_cu.detach()
-                b_hat = b_cu.detach().cpu().numpy()
-            elif solver_args.solver == "VI":
-                with torch.no_grad():
-                    iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
-                    recon_loss = recon_loss.mean().item()
-                    sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
-                    b_select = b_cu[torch.arange(len(b_cu)), sample_idx].detach()
-                    b_hat = b_select.cpu().numpy()
+            with autocast(enabled=train_args.amp):
+                # Infer coefficients
+                if solver_args.solver == "FISTA":
+                    (recon_loss, _, _), b_cu = FISTA_pytorch(x, decoder, train_args.dict_size, 
+                                                            lambda_warmup*solver_args.lambda_, max_iter=1500, tol=1e-6, 
+                                                            clip_grad=solver_args.clip_grad, device=default_device)
+                    with torch.no_grad():
+                        x_hat = decoder(b_cu)
+                        recon_loss = F.mse_loss(x_hat, x).item()
+                    iwae_loss, kl_loss = torch.tensor(-1.), torch.tensor(-1.)
+                    b_select = b_cu.detach()
+                    b_hat = b_cu.detach().cpu().numpy()
+                elif solver_args.solver == "VI":
+                    with torch.no_grad():
+                        iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
+                        recon_loss = recon_loss.mean().item()
+                        sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
+                        b_select = b_cu[torch.arange(len(b_cu)), sample_idx].detach()
+                        b_hat = b_select.cpu().numpy()
 
             # Compute and save loss
             epoch_val_recon[i] = recon_loss
@@ -166,7 +172,7 @@ if __name__ == "__main__":
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         coeff_est[j] = b_hat
         if solver_args.threshold and solver_args.solver == "VI":
-            lambda_list[j] = encoder.lambda_.data.mean(dim=0).cpu().numpy()
+            lambda_list[j] = encoder.lambda_.data.mean(dim=(0,1)).cpu().numpy()
         else:
             lambda_list[j] = np.ones(train_args.dict_size) * -1
 
