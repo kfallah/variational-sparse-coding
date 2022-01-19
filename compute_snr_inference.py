@@ -16,40 +16,43 @@ from utils.data_loader import load_whitened_images
 
 
 # %%
-
 num_samples = 1
 sample_method = "max"
 base_directory = "comp256_v4"
-trial = 1
-num_forward_passes = 5
+trial = 2
+num_forward_passes = 1000
 base_lambda = 20
+file_suffix = f"_{num_samples}samp_v{trial}"
 
 # Coadapt baseline
 file_list = [
-    #f"{base_directory}/gaussian_1samp_v{trial}/",
-    #f"{base_directory}/laplacian_1samp_v{trial}/",
-    f"{base_directory}/concreteslab_1samp_v{trial}/",
-    #f"{base_directory}/gaussian_thresh_1samp_v{trial}/",
-    #f"{base_directory}/gaussian_learnthresh_1samp_v{trial}/",
-    f"{base_directory}/laplacian_thresh_1samp_v{trial}/",
-    #f"{base_directory}/laplacian_learnthresh_1samp_v{trial}/",
+    #f"{base_directory}/FISTA_fnorm1e-4_v{trial}/",
+    #f"{base_directory}/gaussian_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/laplacian_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/concreteslab_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/gaussian_thresh_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/gaussian_learnthresh_{num_samples}samp_v{trial}/",
+    f"{base_directory}/laplacian_thresh_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/laplacian_learnthresh_{num_samples}samp_v{trial}/",
 ]
 
 file_labels = [
+    #"FISTA",
     #"Gaussian",
     #"Laplacian",
-    "Concreteslab",
+    #"Concreteslab",
     #"Gaussian Thresh",
     #"Gaussian Thresh+Gamma",
-    "Laplacian Thresh"
+    "Laplacian Thresh",
     #"Laplacian Thresh+Gamma"
 ]
+
 
 # %%
 #with open(base_run + "config.json") as json_data:
 with open(file_list[0] + 'config.json') as json_data:
     config_data = json.load(json_data)
-logging.basicConfig(filename=f"figures/{base_directory}/snr/inference_snr.txt", 
+logging.basicConfig(filename=f"figures/{base_directory}/snr/inference_snr{file_suffix}.txt", 
                     filemode='w', level=logging.DEBUG)
 train_args = SimpleNamespace(**config_data['train'])
 gt_dictionary = np.load(file_list[0] + 'train_savefile.npz')['phi'][-1]
@@ -74,7 +77,7 @@ for idx, train_run in enumerate(file_list):
         epoch_list = np.arange(0, train_args.epochs + 1, 20)
     else:
         epoch_list = [int(re.search(r'epoch([0-9].*).pt', f)[1]) for f in os.listdir(train_run) if re.search(r'epoch([0-9].*).pt', f)]
-        epoch_list = [20, 40, 100, 300]
+        epoch_list = [300]
 
     for epoch in epoch_list:
         np.random.seed(train_args.seed)
@@ -109,9 +112,8 @@ for idx, train_run in enumerate(file_list):
                 iwae_loss.backward()
                 model_grad = [param.grad.data.reshape(-1).detach().cpu() for param in encoder.parameters()]
                 model_grad = torch.cat(model_grad)
-                dict_grad_list[file_labels[idx]][epoch][k] += model_grad.numpy()
+                dict_grad_list[file_labels[idx]][epoch][k] += model_grad.numpy() / (len(val_patches) // train_args.batch_size)
 
-        dict_grad_list[file_labels[idx]][epoch] = dict_grad_list[file_labels[idx]][epoch] / len(val_patches)
         grad_mean = np.mean(dict_grad_list[file_labels[idx]][epoch], axis=0)
         grad_std = np.std(dict_grad_list[file_labels[idx]][epoch], axis=0).clip(1e-9, None)
         grad_snr = np.abs(grad_mean / grad_std)

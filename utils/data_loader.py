@@ -9,7 +9,7 @@ import numpy as np
 import scipy.io
 from sklearn.feature_extraction.image import extract_patches_2d
 
-def load_celeba(path, train_args):
+def load_celeba(path, train_args, distributed=False):
     train_data = torchvision.datasets.CelebA(path, split='train', target_type = 'attr',
                                     download=False,
                                     transform=transforms.Compose([    
@@ -29,10 +29,27 @@ def load_celeba(path, train_args):
                                     ]))
     test_data = torch.utils.data.Subset(test_data, torch.arange(train_args.val_samples))
 
-    train_loader = torch.utils.data.DataLoader(train_data, batch_size=train_args.batch_size,
-                                               shuffle=True, num_workers=8)
-    test_loader = torch.utils.data.DataLoader(test_data, batch_size=train_args.batch_size,
-                                              shuffle=False, num_workers=8, drop_last=True)
+    if distributed:
+        train_sampler = torch.utils.data.distributed.DistributedSampler(
+                            train_data, num_replicas=train_args.world_size, rank=train_args.rank,
+                            shuffle=True, seed=train_args.seed
+        )
+
+        test_sampler = torch.utils.data.distributed.DistributedSampler(
+                            test_data, num_replicas=train_args.world_size, rank=train_args.rank,
+                            shuffle=False, seed=train_args.seed
+        )
+
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=train_args.batch_size,
+                                                shuffle=False, num_workers=8, sampler=train_sampler)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=train_args.batch_size,
+                                                shuffle=False, num_workers=8, sampler=test_sampler,
+                                                drop_last=True)
+    else:
+        train_loader = torch.utils.data.DataLoader(train_data, batch_size=train_args.batch_size,
+                                                shuffle=True, num_workers=8)
+        test_loader = torch.utils.data.DataLoader(test_data, batch_size=train_args.batch_size,
+                                                shuffle=False, num_workers=8, drop_last=True)
     logging.info(f"Dataset loaded with {len(train_data)} training and {len(test_data)} test images")
     return train_loader, test_loader
 

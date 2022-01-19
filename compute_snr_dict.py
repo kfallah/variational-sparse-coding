@@ -16,34 +16,34 @@ from utils.data_loader import load_whitened_images
 
 
 # %%
-
 num_samples = 1
 sample_method = "max"
 base_directory = "comp256_v4"
 trial = 1
-num_forward_passes = 5
+num_forward_passes = 300
 base_lambda = 20
+file_suffix = "_FISTA_v1"
 
 # Coadapt baseline
 file_list = [
-    #f"{base_directory}/FISTA_fnorm1e-4_v{trial}/",
-    #f"{base_directory}/gaussian_1samp_v{trial}/",
-    #f"{base_directory}/laplacian_1samp_v{trial}/",
-    f"{base_directory}/concreteslab_1samp_v{trial}/",
-    #f"{base_directory}/gaussian_thresh_1samp_v{trial}/",
-    #f"{base_directory}/gaussian_learnthresh_1samp_v{trial}/",
-    f"{base_directory}/laplacian_thresh_1samp_v{trial}/",
-    #f"{base_directory}/laplacian_learnthresh_1samp_v{trial}/",
+    f"{base_directory}/FISTA_fnorm1e-4_v{trial}/",
+    #f"{base_directory}/gaussian_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/laplacian_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/concreteslab_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/gaussian_thresh_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/gaussian_learnthresh_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/laplacian_thresh_{num_samples}samp_v{trial}/",
+    #f"{base_directory}/laplacian_learnthresh_{num_samples}samp_v{trial}/",
 ]
 
 file_labels = [
-    #"FISTA",
+    "FISTA",
     #"Gaussian",
     #"Laplacian",
-    "Concreteslab",
+    #"Concreteslab",
     #"Gaussian Thresh",
     #"Gaussian Thresh+Gamma",
-    "Laplacian Thresh"
+    #"Laplacian Thresh",
     #"Laplacian Thresh+Gamma"
 ]
 
@@ -51,7 +51,7 @@ file_labels = [
 #with open(base_run + "config.json") as json_data:
 with open(file_list[0] + 'config.json') as json_data:
     config_data = json.load(json_data)
-logging.basicConfig(filename=f"figures/{base_directory}/snr/dict_snr.txt", 
+logging.basicConfig(filename=f"figures/{base_directory}/snr/dict_snr{file_suffix}.txt", 
                     filemode='w', level=logging.DEBUG)
 train_args = SimpleNamespace(**config_data['train'])
 gt_dictionary = np.load(file_list[0] + 'train_savefile.npz')['phi'][-1]
@@ -76,7 +76,7 @@ for idx, train_run in enumerate(file_list):
         epoch_list = np.arange(0, train_args.epochs + 1, 20)
     else:
         epoch_list = [int(re.search(r'epoch([0-9].*).pt', f)[1]) for f in os.listdir(train_run) if re.search(r'epoch([0-9].*).pt', f)]
-        epoch_list = [0, 20, 40, 100, 300]
+    epoch_list = [20, 40, 100, 300]
 
     for epoch in epoch_list:
         with torch.no_grad():
@@ -105,13 +105,12 @@ for idx, train_run in enumerate(file_list):
                 for k in range(num_forward_passes):
                     if solver_args.solver == "FISTA":
                         b = FISTA(phi.detach().cpu().numpy(), patches, tau=base_lambda)
-                        b_cu = torch.tensor(b, device=default_device).unsqueeze(dim=1).float()
-                        weight = torch.ones((len(b), 1), device=default_device)
+                        b_cu = torch.tensor(b, device=default_device).T.unsqueeze(dim=1).float()
+                        weight = torch.ones((1, len(b)), device=default_device)
                     elif solver_args.solver == "VI":
                         encoder.solver_args.sample_method = sample_method
                         encoder.solver_args.num_samples = num_samples
                         iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(patches_cu, phi.detach()) 
-                    #print(b_cu.shape)
 
                     sample_idx = torch.distributions.categorical.Categorical(weight).sample().detach()
                     b_cu = b_cu.permute(1, 0, 2).detach()
@@ -119,9 +118,8 @@ for idx, train_run in enumerate(file_list):
                     residual = patches_cu - x_hat
                     model_grad = ((residual[..., None] * b_cu[:, :, None]) * weight.T[..., None, None]).sum(dim=0) / (-0.5 * train_args.dict_size)
                     model_grad = model_grad.detach().cpu()
-                    dict_grad_list[file_labels[idx]][epoch][k] += model_grad.numpy().sum(axis=0).reshape(-1)
+                    dict_grad_list[file_labels[idx]][epoch][k] += model_grad.numpy().sum(axis=0).reshape(-1) / len(val_patches)
 
-            dict_grad_list[file_labels[idx]][epoch] = dict_grad_list[file_labels[idx]][epoch] / len(val_patches)
             grad_mean = np.mean(dict_grad_list[file_labels[idx]][epoch], axis=0)
             grad_std = np.std(dict_grad_list[file_labels[idx]][epoch], axis=0).clip(1e-9, None)
             grad_snr = np.abs(grad_mean / grad_std)

@@ -22,7 +22,7 @@ def compute_kl(solver_args, **kwargs):
         raise NotImplementedError
 
     if solver_args.threshold and solver_args.theshold_learn:
-        kl_loss += kwargs['encoder'].lambda_kl_loss.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
+        kl_loss += solver_args.gamma_kl_weight * kwargs['encoder'].lambda_kl_loss.repeat(solver_args.num_samples, 1, 1).permute(1, 0, 2)
 
     return kl_loss
 
@@ -164,12 +164,15 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
     z = shift + eps*scale
 
     if solver_args.threshold:
-        z_thresh = encoder.soft_threshold(eps*scale)
-        non_zero = torch.nonzero(z_thresh, as_tuple=True)  
-        z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
         if solver_args.estimator == "straight":
-            z = z + (z_thresh - z).detach()
+            z_thresh = encoder.soft_threshold(eps*scale.detach())
+            non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+            z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
+            z = z + z_thresh - z.detach()
         else:
+            z_thresh = encoder.soft_threshold(eps*scale)
+            non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+            z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
             z = z_thresh
 
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps*scale), encoder=encoder, 
@@ -191,12 +194,15 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     eps = -scale * torch.sign(u) * torch.log((1.0-2.0*torch.abs(u)).clamp(min=1e-6)) 
     z = shift + eps * encoder.warmup
     if solver_args.threshold:
-        z_thresh = encoder.soft_threshold(eps * encoder.warmup)
-        non_zero = torch.nonzero(z_thresh, as_tuple=True)  
-        z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
         if solver_args.estimator == "straight":
-            z = z + (z_thresh - z).detach()
+            z_thresh = encoder.soft_threshold(eps.detach() * encoder.warmup)
+            non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+            z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
+            z = z + z_thresh - z.detach()
         else:
+            z_thresh = encoder.soft_threshold(eps*scale)
+            non_zero = torch.nonzero(z_thresh, as_tuple=True)  
+            z_thresh[non_zero] = shift[non_zero] + z_thresh[non_zero]
             z = z_thresh
     
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
