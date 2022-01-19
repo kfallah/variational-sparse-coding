@@ -92,7 +92,7 @@ def clf_kl(solver_args, **params):
     pseudo_shift, pseudo_logscale = pseudo_shift[None, None], pseudo_logscale[None, None]
     shift, logscale = params['shift'][:, :, None], params['logscale'][:, :, None]
     clf_logit = params['encoder'].clf(params['x'][:, 0])
-    selection = F.gumbel_softmax(clf_logit, tau=params['encoder'].clf_temp).unsqueeze(1)
+    selection = F.gumbel_softmax(clf_logit, tau=params['encoder'].clf_temp, hard=True).unsqueeze(1)
 
     if solver_args.prior_distribution == "laplacian":
         kl_loss = ((shift - pseudo_shift).abs() / pseudo_logscale.exp()) + pseudo_logscale - logscale - 1
