@@ -178,9 +178,9 @@ def sample_gaussian(shift, logscale, x, A, encoder, solver_args, idx=None):
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps*scale), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
-
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), solver_args.kl_weight * kl_loss.sum(dim=-1), 
+                                     encoder, solver_args.sample_method, idx)    
+                                     
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
 def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
@@ -208,9 +208,9 @@ def sample_laplacian(shift, logscale, x, A, encoder, solver_args, idx=None):
     kl_loss = compute_kl(solver_args, x=x, z=(shift + eps), encoder=encoder, 
                          logscale=logscale, shift=shift, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
-
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), solver_args.kl_weight * kl_loss.sum(dim=-1), 
+                                     encoder, solver_args.sample_method, idx)
+                                     
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
 def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, temp=0.1, spike_prior=0.2, idx=None):
@@ -254,8 +254,8 @@ def sample_concreteslab(shift, logscale, logspike, x, A, encoder, solver_args, t
                          shift=shift, logspike=logspike, spike=spike, 
                          spike_prior=spike_prior, idx=idx)
     recon_loss = compute_recon_loss(x, z, A)
-    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), 
-                                     solver_args.kl_weight * kl_loss.sum(dim=-1), solver_args.sample_method)
+    weight, iwae_loss = compute_loss(z, recon_loss.mean(dim=-1), solver_args.kl_weight * kl_loss.sum(dim=-1), 
+                                     encoder, solver_args.sample_method, idx)
 
     return iwae_loss, recon_loss.mean(dim=1), kl_loss.mean(dim=1), z, weight
 
@@ -268,7 +268,7 @@ def compute_recon_loss(x, z, A):
 
     return recon_loss
 
-def compute_loss(z, recon_loss, kl_loss, sample_method="avg"):
+def compute_loss(z, recon_loss, kl_loss, encoder, sample_method="avg", idx=None):
     log_loss = recon_loss + kl_loss
 
     if sample_method == "iwae":
@@ -282,6 +282,20 @@ def compute_loss(z, recon_loss, kl_loss, sample_method="avg"):
         z_idx = torch.argmin(log_loss, dim=-1).detach()
         weight = torch.zeros_like(recon_loss)
         weight[torch.arange(len(z)), z_idx] = 1
+    elif sample_method == "rejection":
+        reject_stat = torch.tensor(encoder.rejection_stat[idx], device=recon_loss.device)
+        weight = torch.zeros_like(recon_loss)
+
+        acceptance_prob = 1 / (torch.exp(log_loss - reject_stat[:, None]) + 1)
+        accepted_draw = torch.rand(acceptance_prob.shape[1], device=recon_loss.device)
+        accepted_idx = accepted_draw < acceptance_prob
+
+        for k in range(len(z)):
+            if not accepted_idx[k].any():
+                max_prob = torch.argmax(acceptance_prob[k])
+                weight[k, max_prob] = 1
+            else:
+                weight[k, accepted_idx[k]] = 1 / len(accepted_idx[k])
     else:
         # Apply standard sampling from (Kingma & Welling)
         weight = torch.ones_like(recon_loss) / recon_loss.shape[-1]

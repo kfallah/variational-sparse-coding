@@ -9,13 +9,13 @@ import numpy as np
 import scipy.io
 from sklearn.feature_extraction.image import extract_patches_2d
 
-def load_celeba(path, train_args, distributed=False):
+def load_celeba(path, train_args, distributed=False, imsize=64):
     train_data = torchvision.datasets.CelebA(path, split='train', target_type = 'attr',
                                     download=False,
                                     transform=transforms.Compose([    
                                         transforms.RandomHorizontalFlip(),
                                         transforms.CenterCrop(140),
-                                        transforms.Resize(64),
+                                        transforms.Resize(imsize),
                                         transforms.ToTensor(),
                                     ]))
     train_data = torch.utils.data.Subset(train_data, torch.arange(train_args.train_samples))
@@ -24,7 +24,7 @@ def load_celeba(path, train_args, distributed=False):
                                         download=False,
                                         transform=transforms.Compose([
                                         transforms.CenterCrop(140),
-                                        transforms.Resize(64),
+                                        transforms.Resize(imsize),
                                         transforms.ToTensor(),
                                     ]))
     test_data = torch.utils.data.Subset(test_data, torch.arange(train_args.val_samples))

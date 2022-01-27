@@ -19,8 +19,8 @@ import torch
 from compute_vsc_statistics import compute_statistics
 from utils.dict_plotting import show_dict
 from utils.solvers import FISTA, ADMM
-from model.lista import VIEncoderLISTA, LISTA
 from model.vi_encoder import VIEncoder
+from model.util import estimate_rejection_stat
 from model.scheduler import CycleScheduler
 from utils.data_loader import load_whitened_images
 from utils.util import *
@@ -72,7 +72,9 @@ if __name__ == "__main__":
         # Create core-set for prior
         if solver_args.prior_method == "coreset":
             build_coreset(solver_args, encoder, train_patches, default_device)
-        
+        if solver_args.sample_method == "rejection":
+            encoder.rejection_stat = np.zeros(len(train_patches))      
+
         torch.save({'model_state': encoder.state_dict()}, train_args.save_path + "encoderstate_epoch0.pt")
     elif solver_args.solver == "FISTA" or solver_args.solver == "ADMM":
         lambda_warmup = 0.1
@@ -92,6 +94,10 @@ if __name__ == "__main__":
     # TRAIN MODEL #
     init_time = time.time()
     for j in range(train_args.epochs):
+        if solver_args.sample_method == "rejection" and j % 20 == 0:
+            encoder.rejection_stat = estimate_rejection_stat(encoder, train_patches, dictionary, train_args, 
+                                                             solver_args, default_device)
+
         epoch_loss = np.zeros(train_patches.shape[0] // train_args.batch_size)
         # Shuffle training data-set
         shuffler = np.random.permutation(len(train_patches))

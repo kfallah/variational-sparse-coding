@@ -24,7 +24,7 @@ import torch.multiprocessing as mp
 
 from model.feature_enc import ConvDecoder
 from model.vi_encoder import VIEncoder
-from model.util import FISTA_pytorch
+from model.util import FISTA_pytorch, frange_cycle_linear
 from model.scheduler import CycleScheduler
 from utils.data_loader import load_celeba
 from utils.util import *
@@ -78,6 +78,15 @@ def train(gpu, train_args, solver_args):
     scheduler = CycleScheduler(opt, train_args.lr,  n_iter=train_args.epochs * len(train_loader),
                                momentum=None, warmup_proportion=0.05) 
 
+    if solver_args.kl_schedule:
+        if solver_args.theshold_learn:
+            kl_schedule = np.ones(len(train_loader)*train_args.epochs) * solver_args.kl_weight
+            ramp = np.linspace(1e-6, 1., int(len(kl_schedule)*0.10))
+            kl_schedule[:len(ramp)] *= ramp
+        else:
+            kl_schedule = frange_cycle_linear(len(train_loader)*train_args.epochs, start=1e-9, 
+                                                stop=solver_args.kl_weight,  n_cycle=4, ratio=0.5)
+
     # Initialize empty arrays for tracking learning data
     lambda_list = np.zeros((train_args.epochs, train_args.dict_size))
     coeff_est = np.zeros((train_args.epochs, train_args.batch_size, train_args.dict_size))
@@ -109,10 +118,9 @@ def train(gpu, train_args, solver_args):
                     x_hat = decoder(b_cu)
                     iwae_loss = F.mse_loss(x_hat, x) 
                 elif solver_args.solver == "VI":
+                    if solver_args.kl_schedule:
+                        solver_args.kl_weight = kl_schedule[len(train_loader)*j + i]
                     iwae_loss, recon_loss, kl_loss, b_cu, weight = encoder(x, decoder)
-
-                if i == 0:
-                    print(f"{train_args.rank} KL: {encoder.module.lambda_kl_loss.mean().item() / solver_args.gamma_kl_weight}")
 
                 opt.zero_grad()
                 scaler.scale(iwae_loss).backward()
@@ -234,8 +242,8 @@ if __name__ == "__main__":
     with open(train_args.save_path + '/config.json', 'wb') as f:
         json.dump(config_data, codecs.getwriter('utf-8')(f), ensure_ascii=False, indent=2)
 
-    world_size = len(train_args.device) * 1
+    world_size = len(train_args.device)
     train_args.world_size = world_size
     os.environ['MASTER_ADDR'] = '143.215.148.217'
-    os.environ['MASTER_PORT'] = '8888'
+    os.environ['MASTER_PORT'] = str(8888 + train_args.device[0])
     mp.spawn(train, nprocs=len(train_args.device), args=(train_args,solver_args))

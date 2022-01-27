@@ -76,8 +76,8 @@ class VIEncoder(nn.Module):
 
         if self.solver_args.threshold:
             if self.solver_args.theshold_learn:
-                alpha = self.lambda_prior_alpha(feat).exp()
-                beta = self.lambda_prior_beta(feat).exp()
+                alpha = self.lambda_prior_alpha(feat).exp().clip(1e-6, 1e6)
+                beta = self.lambda_prior_beta(feat).exp().clip(1e-6, 1e6)
                 gamma_pred = gamma.Gamma(alpha, beta)
                 gamma_prior = gamma.Gamma(3, (3 * torch.ones_like(beta)) / self.solver_args.threshold_lambda)
 

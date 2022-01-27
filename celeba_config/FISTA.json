@@ -29,6 +29,7 @@
       "estimator": "subgradient",
       "prior_method": "fixed",
       "spread_prior": 0.1,
-      "kl_weight": 0.0
+      "kl_weight": 0.0,
+      "kl_schedule": false
     }
   }

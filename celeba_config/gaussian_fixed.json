@@ -1,7 +1,7 @@
 {
     "train": {
       "device": [0, 1],
-      "amp": false,
+      "amp": true,
       "seed": 0,
       "train_samples": 150000,
       "val_samples": 19000,
@@ -9,7 +9,7 @@
       "dict_size": 64,
       "epochs": 200,
       "save_freq": 20,
-      "save_path": "results_celeba/gaussian_learnthresh_kl1e-3_v2/",
+      "save_path": "results_celeba/gaussian_learnthresh_kl1e-3_1samp/",
       "lr": 3e-4,
       "weight_decay": 1e-5
     },
@@ -20,7 +20,7 @@
       "debug": true,
       "true_coeff": false,
       "sample_method": "max",
-      "num_samples": 5,
+      "num_samples": 1,
       "threshold": true,
       "threshold_lambda": 0.405,
       "theshold_learn": true,
@@ -29,6 +29,7 @@
       "estimator": "straight",
       "prior_method": "fixed",
       "spread_prior": 0.1,
-      "kl_weight": 1e-3
+      "kl_weight": 1e-3,
+      "kl_schedule": false
     }
   }

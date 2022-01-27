@@ -1,9 +1,50 @@
 # nshepperd on GitHub
 # Source: https://gist.github.com/nshepperd/9c90a95c5b3e2e61e62cc93066010c56
 
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+def estimate_rejection_stat(encoder, train_data, dictionary, train_args, solver_args, default_device, num_samples=100, quantile=0.9):
+    original_count = solver_args.num_samples
+    solver_args.sample_method = "avg"
+    solver_args.num_samples = 1
+    rejection_stat = np.zeros(len(train_data))
+
+    with torch.no_grad():
+        for i in range(train_data.shape[0] // train_args.batch_size):
+            patches = train_data[i * train_args.batch_size:(i + 1) * train_args.batch_size].reshape(train_args.batch_size, -1).T
+            patch_idx = np.arange(i * train_args.batch_size, (i + 1) * train_args.batch_size)
+            patches_cu = torch.tensor(patches.T).float().to(default_device)
+            dict_cu = torch.tensor(dictionary, device=default_device).float()
+
+            sample_loss = np.zeros((num_samples, train_args.batch_size))
+            for j in range(num_samples):
+                _, recon_loss, kl_loss, _, _ = encoder(patches_cu, dict_cu, patch_idx)
+                sample_loss[j] = (recon_loss + kl_loss).mean(dim=-1).detach().cpu().numpy()
+
+            sample_loss = np.sort(sample_loss, axis=0)
+            rejection_stat[patch_idx] = sample_loss[int(quantile * len(sample_loss))]
+
+    solver_args.sample_method = "rejection"
+    solver_args.num_samples = original_count
+
+    return rejection_stat
+
+def frange_cycle_linear(n_iter, start=0.0, stop=1.0,  n_cycle=4, ratio=0.5):
+    L = np.ones(n_iter) * stop
+    period = n_iter/n_cycle
+    step = (stop-start)/(period*ratio) # linear schedule
+
+    for c in range(n_cycle):
+        v, i = start, 0
+        while v <= stop and (int(i+c*period) < n_iter):
+            L[int(i+c*period)] = v
+            v += step
+            i += 1
+    return L 
 
 def conditional_gumbel(logits, D, k=1):
     """Outputs k samples of Y = logits + StandardGumbel(), such that the

@@ -28,6 +28,7 @@
       "estimator": "straight",
       "prior_method": "fixed",
       "spread_prior": 0.1,
-      "kl_weight": 0.001
+      "kl_weight": 0.001,
+      "kl_schedule": false
     }
   }

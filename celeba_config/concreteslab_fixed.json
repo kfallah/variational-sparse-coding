@@ -30,6 +30,7 @@
       "spread_prior": 0.1,
       "spike_prior": 0.1,
       "temp_min": 0.005,
-      "kl_weight": 1e-4
+      "kl_weight": 1e-4,
+      "kl_schedule": false
     }
   }
