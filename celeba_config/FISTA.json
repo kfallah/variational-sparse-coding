@@ -9,7 +9,7 @@
       "dict_size": 64,
       "epochs": 200,
       "save_freq": 20,
-      "save_path": "results_celeba/FISTA_gradclip_lambda16/",
+      "save_path": "results_celeba/FISTA/",
       "lr": 3e-4,
       "weight_decay": 1e-5
     },

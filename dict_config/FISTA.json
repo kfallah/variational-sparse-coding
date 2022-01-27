@@ -12,7 +12,7 @@
     "patch_size": 16,
     "epochs": 300,
     "save_freq": 20,
-    "save_path": "result/FISTA_fnorm1e-4_v3/",
+    "save_path": "results/FISTA_fnorm1e-4_v3/",
     "normalize": false,
     "fnorm_reg": 1e-4,
     "lr": 0.5,

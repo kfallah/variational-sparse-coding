@@ -1,7 +1,7 @@
 {
     "train": {
       "device": [0, 1],
-      "amp": false,
+      "amp": true,
       "seed": 0,
       "train_samples": 150000,
       "val_samples": 19000,
@@ -9,7 +9,7 @@
       "dict_size": 64,
       "epochs": 200,
       "save_freq": 20,
-      "save_path": "results_celeba/laplacian_thresh_kl1e-3/",
+      "save_path": "results_celeba/laplacian_thresh_kl1e-4/",
       "lr": 3e-4,
       "weight_decay": 1e-5
     },
@@ -28,7 +28,7 @@
       "estimator": "straight",
       "prior_method": "fixed",
       "spread_prior": 0.1,
-      "kl_weight": 0.001,
+      "kl_weight": 0.0001,
       "kl_schedule": false
     }
   }

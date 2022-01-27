@@ -1,7 +1,7 @@
 {
     "train": {
-      "device": [0],
-      "amp": false,
+      "device": [0, 1],
+      "amp": true,
       "seed": 0,
       "train_samples": 150000,
       "val_samples": 19000,
@@ -20,7 +20,7 @@
       "debug": true,
       "true_coeff": false,
       "sample_method": "max",
-      "num_samples": 5,
+      "num_samples": 1,
       "threshold": true,
       "threshold_lambda": 0.25,
       "theshold_learn": true,
