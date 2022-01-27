@@ -16,7 +16,7 @@ The modules in this code are written to generalize to arbitrary inference strate
 
 ### Linear Generator
 
-`train_vsc_dict.py` is main training script for training a linear generator with whitened image patches. Note that this dataset must be manually downloaded from [http://www.rctn.org/bruno/sparsenet/](http://www.rctn.org/bruno/sparsenet/) (labeled as whitened natural scenes) and placed in a folder labeled `./data/`. It takes as input a .json config file found in the `dict_config` folder. To start a training run, use the following command:
+`train_vsc_dict.py` is the main training script for training a linear generator with whitened image patches. Note that this dataset must be manually downloaded from [http://www.rctn.org/bruno/sparsenet/](http://www.rctn.org/bruno/sparsenet/) (labeled as whitened natural scenes) and placed in a folder labeled `./data/`. The training script takes as input a .json config file (all methods from paper included in the `dict_config` folder). To start a training run, use the following command:
 
 ```
 python train_vsc_dict.py -c dict_config/[CONFIG_FILE]
@@ -46,7 +46,7 @@ All config files needed to reproduce paper results are included. Use the below t
 
 ### DNN Generator
 
-`train_vsc_celeb.py` is main training script for training a DNN generator on the CelebA dataset. It must be manually downloaded from [https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html) and placed in a folder labeled `./data/celeba`. It takes as input a .json config file found in the `celeba_config` folder. To start a training run, use the following command:
+`train_vsc_celeb.py` is the main training script for training a DNN generator on the CelebA dataset. CelebA must be manually downloaded from [https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html](https://mmlab.ie.cuhk.edu.hk/projects/CelebA.html) and placed in a folder labeled `./data/celeba`. The training script takes as input a .json config file (examples found in the `celeba_config` folder). To start a training run, use the following command:
 
 ```
 python train_vsc_celeb.py -c celeba_config/[CONFIG_FILE]
@@ -56,10 +56,11 @@ The config files are structured nearly the same as in the linear generator. Most
 
 ## Reproducing Figures
 
-To reproduce results from Table 1, use `vsc_dict_plotting.ipynb`. The script `compute_vsc_statistics.py` can be used to measure multi-information, posterior collapse, and coefficient collapse. Note that this script is automatically run at the end of each training run. To run this command, one can feed the filepath as an argument:
+To reproduce results from Table 1, use `vsc_dict_plotting.ipynb`. The script `compute_vsc_statistics.py` can be used to measure multi-information, posterior collapse, and coefficient collapse. Note that this script is automatically run at the end of each training run. To run this command, one can feed the filepath leading to a complete training run as an argument:
 ```
 python compute_vsc_statistics -r PATH_TO_RUNFILE
 ```
+All logs will be included in the path input in a file labeled `statistics.log`.
 
 Full dictionaries (like seen in Figure 3) are automatically generated for each training run in the respective folder.
 
