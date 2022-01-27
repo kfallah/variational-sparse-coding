@@ -1,7 +1,7 @@
 # Variational Sparse Coding
 
 <p align="center">
-<img align="middle" src="results/figures/intro.png" alt="thresh" width="250"/>
+<img align="middle" src="figures/intro.png" alt="thresh" width="250"/>
 </p>
 
 ## Dependencies
