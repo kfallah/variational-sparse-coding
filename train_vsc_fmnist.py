@@ -26,7 +26,7 @@ from model.feature_enc import ConvDecoder
 from model.vi_encoder import VIEncoder
 from model.util import FISTA_pytorch, frange_cycle_linear
 from model.scheduler import CycleScheduler
-from utils.data_loader import load_celeba
+from utils.data_loader import load_fmnist
 from utils.util import *
 
 def train(gpu, train_args, solver_args):
@@ -50,18 +50,18 @@ def train(gpu, train_args, solver_args):
     torch.backends.cudnn.deterministic = True
 
     # LOAD DATASET #
-    train_loader, test_loader = load_celeba("./data/", train_args, distributed=True)
+    train_loader, test_loader = load_fmnist("./data/", train_args, distributed=True)
 
     # INITIALIZE 
     torch.cuda.set_device(gpu)
     default_device = torch.device('cuda', gpu)
 
-    decoder = ConvDecoder(train_args.dict_size, 3).to(default_device)
+    decoder = ConvDecoder(train_args.dict_size, 1, im_size=28).to(default_device)
     decoder = nn.parallel.DistributedDataParallel(decoder, device_ids=[gpu])
     scaler = GradScaler(enabled=train_args.amp)
 
     if solver_args.solver == "VI":
-        encoder = VIEncoder(16, train_args.dict_size, solver_args).to(default_device)
+        encoder = VIEncoder(16, train_args.dict_size, solver_args, input_size=(1, 28, 28)).to(default_device)
         encoder = nn.parallel.DistributedDataParallel(encoder, device_ids=[gpu])
 
         opt = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),

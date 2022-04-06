@@ -14,7 +14,7 @@ from model.feature_enc import MLPEncoder, ConvEncoder
 
 class VIEncoder(nn.Module):
 
-    def __init__(self, img_size, dict_size, solver_args):
+    def __init__(self, img_size, dict_size, solver_args, input_size=(3, 64, 64)):
         super(VIEncoder, self).__init__()
         self.solver_args = solver_args
         self.dict_size = dict_size
@@ -23,14 +23,15 @@ class VIEncoder(nn.Module):
             self.enc = MLPEncoder(int(np.sqrt(img_size)))
             input_size = (img_size**2)
         elif self.solver_args.feature_enc == "CONV":
-            img_size = 256
-            self.enc = ConvEncoder(img_size, 3)
-            input_size = (3, 64, 64)
+            self.enc = ConvEncoder(img_size, input_size[0], im_size=input_size[1])
+            if input_size[1] == 64:
+                img_size = 256
+            elif input_size[1] == 28:
+                img_size = 128
         elif self.solver_args.feature_enc == "RES":
             self.enc = models.resnet18()
             self.enc.fc = nn.Identity()
             img_size = 512
-            input_size = (3, 64, 64)
         else:
             raise NotImplementedError
 
