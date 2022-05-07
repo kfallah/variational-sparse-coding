@@ -30,13 +30,16 @@ from utils.data_loader import load_fmnist
 from utils.util import *
 
 def train(gpu, train_args, solver_args):
+
     train_args.rank = gpu
+    """
     dist.init_process_group(
     	backend='nccl',
         init_method='env://',
     	world_size=train_args.world_size,
     	rank=train_args.rank
     )
+    """
 
     if train_args.rank == 0:
         logging.basicConfig(filename=os.path.join(train_args.save_path, 'training.log'), 
@@ -50,30 +53,33 @@ def train(gpu, train_args, solver_args):
     torch.backends.cudnn.deterministic = True
 
     # LOAD DATASET #
-    train_loader, test_loader = load_fmnist("./data/", train_args, distributed=True)
+    train_loader, test_loader = load_fmnist("./data/", train_args, distributed=False)
 
     # INITIALIZE 
-    torch.cuda.set_device(gpu)
-    default_device = torch.device('cuda', gpu)
+    torch.cuda.set_device(train_args.device[0])
+    default_device = torch.device('cuda', train_args.device[0])
 
     decoder = ConvDecoder(train_args.dict_size, 1, im_size=28).to(default_device)
-    decoder = nn.parallel.DistributedDataParallel(decoder, device_ids=[gpu])
+    #decoder = nn.parallel.DistributedDataParallel(decoder, device_ids=[gpu])
     scaler = GradScaler(enabled=train_args.amp)
 
     if solver_args.solver == "VI":
         encoder = VIEncoder(16, train_args.dict_size, solver_args, input_size=(1, 28, 28)).to(default_device)
-        encoder = nn.parallel.DistributedDataParallel(encoder, device_ids=[gpu])
+        #encoder = nn.parallel.DistributedDataParallel(encoder, device_ids=[gpu])
 
         opt = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
                                 lr=train_args.lr, betas=(0.5, 0.999), weight_decay=train_args.weight_decay) 
-        torch.save({'encoder': encoder.module.state_dict(), 'decoder': decoder.module.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
+        torch.save({'encoder': encoder.state_dict(), 'decoder': decoder.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
+
+        if solver_args.prior_distribution == "laplacian":
+            encoder.ramp_hyperparams()
     else:
         #opt = torch.optim.SGD(decoder.parameters(), lr=train_args.lr, weight_decay=train_args.weight_decay,
         #                      momentum=0.9, nesterov=True)
         lambda_warmup = 1e-2
         opt = torch.optim.Adam(decoder.parameters(), lr=train_args.lr, betas=(0.5, 0.999), 
                                weight_decay=train_args.weight_decay) 
-        torch.save({'decoder': decoder.module.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
+        torch.save({'decoder': decoder.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
 
     scheduler = CycleScheduler(opt, train_args.lr,  n_iter=train_args.epochs * len(train_loader),
                                momentum=None, warmup_proportion=0.05) 
@@ -130,18 +136,18 @@ def train(gpu, train_args, solver_args):
 
             # Ramp up sigmoid for spike-slab
             if solver_args.prior_distribution == "concreteslab":
-                encoder.module.temp *= 0.9995
-                if encoder.module.temp <= solver_args.temp_min:
-                    encoder.module.temp = solver_args.temp_min
+                encoder.temp *= 0.9995
+                if encoder.temp <= solver_args.temp_min:
+                    encoder.temp = solver_args.temp_min
             if solver_args.prior_method == "clf":
-                encoder.module.clf_temp *= 0.9995
-                if encoder.module.clf_temp <= solver_args.clf_temp_min:
-                    encoder.module.clf_temp = solver_args.clf_temp_min
+                encoder.clf_temp *= 0.9995
+                if encoder.clf_temp <= solver_args.clf_temp_min:
+                    encoder.clf_temp = solver_args.clf_temp_min
             if solver_args.prior_distribution == "concreteslab" or solver_args.prior_distribution == "laplacian":
-                if (len(train_loader)*j + i) >= 1500:
-                    encoder.module.warmup += 2e-4
-                    if encoder.module.warmup >= 1.0:
-                        encoder.module.warmup = 1.0
+                if (len(train_loader)*j + i) >= 500:
+                    encoder.warmup += 2e-4
+                    if encoder.warmup >= 1.0:
+                        encoder.warmup = 1.0
 
         # Test reconstructed or uncompressed dictionary on validation data-set
         epoch_val_recon = np.zeros(len(test_loader))
@@ -187,7 +193,7 @@ def train(gpu, train_args, solver_args):
         val_iwae_loss[j], val_kl_loss[j]  = np.mean(epoch_iwae_loss), np.mean(epoch_kl_loss)
         coeff_est[j] = b_hat
         if solver_args.threshold and solver_args.solver == "VI":
-            lambda_list[j] = encoder.module.lambda_.data.mean(dim=(0,1)).cpu().numpy()
+            lambda_list[j] = encoder.lambda_.data.mean(dim=(0,1)).cpu().numpy()
         else:
             lambda_list[j] = np.ones(train_args.dict_size) * -1
 
@@ -215,10 +221,10 @@ def train(gpu, train_args, solver_args):
                         lambda_list=lambda_list, time=train_time, val_recon=val_recon, 
                         val_l1=val_l1, val_iwae_loss=val_iwae_loss, val_kl_loss=val_kl_loss, coeff_est=coeff_est)
                 if solver_args.solver == "VI":
-                    torch.save({'encoder': encoder.module.state_dict(), 'decoder': decoder.module.state_dict()}, 
+                    torch.save({'encoder': encoder.state_dict(), 'decoder': decoder.state_dict()}, 
                             train_args.save_path + f"modelstate_epoch{j+1}.pt")
                 else:
-                    torch.save({'decoder': decoder.module.state_dict()}, train_args.save_path + f"modelstate_epoch{j+1}.pt")
+                    torch.save({'decoder': decoder.state_dict()}, train_args.save_path + f"modelstate_epoch{j+1}.pt")
                     
             logging.info("Epoch {} of {}, Val Recon: {:.3E}, Val KL: {:.3E}, Val SC: {:.3E}, Time = {:.0f} secs"\
                         .format(j + 1, train_args.epochs, val_recon[j],  val_kl_loss[j], \
@@ -242,8 +248,12 @@ if __name__ == "__main__":
     with open(train_args.save_path + '/config.json', 'wb') as f:
         json.dump(config_data, codecs.getwriter('utf-8')(f), ensure_ascii=False, indent=2)
 
+
+    train(0, train_args, solver_args)
+    """
     world_size = len(train_args.device)
     train_args.world_size = world_size
     os.environ['MASTER_ADDR'] = '143.215.148.217'
     os.environ['MASTER_PORT'] = str(8888 + train_args.device[0])
     mp.spawn(train, nprocs=len(train_args.device), args=(train_args,solver_args))
+    """

@@ -1,35 +1,37 @@
 {
-    "train": {
-      "device": [0],
-      "amp": true,
-      "seed": 0,
-      "train_samples": 60000,
-      "val_samples": 10000,
-      "batch_size": 500,
-      "dict_size": 64,
-      "epochs": 200,
-      "save_freq": 20,
-      "save_path": "results_fmnist/z64/gaussian_learnthresh_kl1e-4/",
-      "lr": 3e-4,
-      "weight_decay": 1e-5
-    },
-    "solver": {
-      "solver": "VI",
-      "feature_enc": "CONV",
-      "lambda_": 0.405,
-      "debug": true,
-      "true_coeff": false,
-      "sample_method": "max",
-      "num_samples": 1,
-      "threshold": true,
-      "threshold_lambda": 0.405,
-      "theshold_learn": true,
-      "gamma_kl_weight": 1e-1,
-      "prior_distribution": "gaussian",
-      "estimator": "straight",
-      "prior_method": "fixed",
-      "spread_prior": 0.1,
-      "kl_weight": 1e-4,
-      "kl_schedule": false
-    }
+  "train": {
+    "device": [
+      1
+    ],
+    "amp": true,
+    "seed": 0,
+    "train_samples": 60000,
+    "val_samples": 10000,
+    "batch_size": 512,
+    "dict_size": 20,
+    "epochs": 300,
+    "save_freq": 50,
+    "save_path": "results_fmnist/10/gaussian_thresh_kl1e-2_z20/",
+    "lr": 0.0003,
+    "weight_decay": 1e-05
+  },
+  "solver": {
+    "solver": "VI",
+    "feature_enc": "CONV",
+    "lambda_": 0.52,
+    "debug": true,
+    "true_coeff": false,
+    "sample_method": "max",
+    "num_samples": 20,
+    "threshold": true,
+    "threshold_lambda": 0.52,
+    "theshold_learn": false,
+    "gamma_kl_weight": 0.1,
+    "prior_distribution": "gaussian",
+    "estimator": "straight",
+    "prior_method": "fixed",
+    "spread_prior": 0.1,
+    "kl_weight": 0.01,
+    "kl_schedule": false
   }
+}

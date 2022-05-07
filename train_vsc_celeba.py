@@ -67,6 +67,9 @@ def train(gpu, train_args, solver_args):
         opt = torch.optim.Adam(list(encoder.parameters()) + list(decoder.parameters()),
                                 lr=train_args.lr, betas=(0.5, 0.999), weight_decay=train_args.weight_decay) 
         torch.save({'encoder': encoder.module.state_dict(), 'decoder': decoder.module.state_dict()}, train_args.save_path + "modelstate_epoch0.pt")
+
+        if solver_args.prior_distribution == "laplacian":
+            encoder.module.ramp_hyperparams()
     else:
         #opt = torch.optim.SGD(decoder.parameters(), lr=train_args.lr, weight_decay=train_args.weight_decay,
         #                      momentum=0.9, nesterov=True)

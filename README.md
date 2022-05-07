@@ -78,6 +78,7 @@ Figures 6 & 8 can be generated with `vsc_celeba_dict_est.ipynb`.
 ## Under Development
 There are a lot of extra features in this code developed throughout this research project. Feel free to explore the source to run new experiments you see fit. The following features are under development and are not gauranteed to work:
 * LISTA
+* ADMM Solvers for MAP Estimates
 * Variational Rejection Sampling
 * A Core-set prior as an alternative to the VampPrior or Clf prior
 * A FISTA generative model that applies FISTA inference through a DNN generator (i.e., sparse VAE with no encoder)

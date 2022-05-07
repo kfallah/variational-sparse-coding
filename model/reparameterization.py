@@ -265,7 +265,6 @@ def compute_recon_loss(x, z, A):
     else:
         x_hat = (z @ A.T)
     recon_loss = F.mse_loss(x_hat, x, reduction='none').reshape(len(x), x.shape[1], -1)
-
     return recon_loss
 
 def compute_loss(z, recon_loss, kl_loss, encoder, sample_method="avg", idx=None):

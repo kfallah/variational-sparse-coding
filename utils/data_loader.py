@@ -12,14 +12,14 @@ from sklearn.feature_extraction.image import extract_patches_2d
 def load_fmnist(path, train_args, distributed=False, imsize=28):
     train_data = torchvision.datasets.FashionMNIST(path, train=True, download=True,
                                     transform=transforms.Compose([    
-                                        transforms.RandomHorizontalFlip(),
+                                        #transforms.RandomHorizontalFlip(),
                                         transforms.ToTensor(),
                                     ]))
     train_data = torch.utils.data.Subset(train_data, torch.arange(train_args.train_samples))
     
     test_data = torchvision.datasets.FashionMNIST(path, train=False, download=False,
                                     transform=transforms.Compose([    
-                                        transforms.RandomHorizontalFlip(),
+                                        #transforms.RandomHorizontalFlip(),
                                         transforms.ToTensor(),
                                     ]))
     test_data = torch.utils.data.Subset(test_data, torch.arange(train_args.val_samples))
